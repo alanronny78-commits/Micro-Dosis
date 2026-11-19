@@ -1,5 +1,5 @@
 // Service worker: guarda la interfaz para que abra rápido. Los datos siempre vienen de la hoja (red).
-const VERSION = 'md-v1';
+const VERSION = 'md-v2';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', e => {
