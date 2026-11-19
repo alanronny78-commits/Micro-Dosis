@@ -148,6 +148,7 @@ var API_ = {
   getForm: function () { return getForm_(); },
   saveForm: function (d) { return saveForm_(d); },
   setStart: function (iso) { return setStart_(iso); },
+  startNewCycle: function (iso) { return startNewCycle_(iso); },
   getMobileSetup: function () { return getMobileSetup_(); },
   setApiUrl: function (url) { return setApiUrl_(url); }
 };
@@ -315,7 +316,8 @@ function getBootstrap_() {
     entries: ents,
     items: items,
     scaleNote: scaleNote,
-    url: ss_().getUrl()
+    url: ss_().getUrl(),
+    cycles: cyclesInfo_()
   };
 }
 
@@ -375,18 +377,29 @@ function saveEntry_(id, data) {
   }
 }
 
-/** Series de puntajes por pregunta para las gráficas. */
-function getProgress_() {
-  var s = sh_(CFG.sheet4D);
-  var lastCol = s.getLastColumn();
-  var v = s.getRange(R4D.gmFirst, 1, R4D.eeLast - R4D.gmFirst + 1, lastCol).getValues();
-  var series = {};
-  var ents = entries_();
+/** Series de puntajes por pregunta de una hoja con el formato de la Bitácora 4D. */
+function seriesFrom_(sheet) {
+  var lastCol = sheet.getLastColumn();
+  var v = sheet.getRange(R4D.gmFirst, 1, R4D.eeLast - R4D.gmFirst + 1, lastCol).getValues();
+  var ents = entries_(), series = {};
   for (var r = R4D.gmFirst; r <= R4D.eeLast; r++) {
     if (r === 16) continue;
     series[r] = ents.map(function (e) { return scoreOut_(v[r - R4D.gmFirst][col4D_(e.id) - 1]); });
   }
-  return { ids: ents.map(function (e) { return e.id; }), series: series };
+  return series;
+}
+
+/** Series del ciclo actual y de los ciclos archivados (para gráficas y comparación). */
+function getProgress_() {
+  var cycles = cyclesInfo_();
+  var out = { ids: entries_().map(function (e) { return e.id; }), cycles: [] };
+  out.cycles.push({ key: 'actual', label: cycles.current.label, series: seriesFrom_(sh_(CFG.sheet4D)) });
+  cycles.archived.slice().reverse().forEach(function (c) {
+    var sh = sheetById_(c.sid4D);
+    if (sh) out.cycles.push({ key: 'c' + c.n, label: c.label, series: seriesFrom_(sh) });
+  });
+  out.series = out.cycles[0].series;   // compatibilidad
+  return out;
 }
 
 /** Todos los textos de una fila (p. ej. Sueños, fila 13) para el diario. */
@@ -511,6 +524,99 @@ function saveForm_(data) {
   });
   SpreadsheetApp.flush();
   return { saved: n, form: getForm_() };
+}
+
+/* ---------- Ciclos ---------- */
+
+var MES_ = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+function fmtD_(d) { return d.getDate() + ' ' + MES_[d.getMonth()] + ' ' + d.getFullYear(); }
+function rangeLabel_(start) {
+  var end = addDays_(start, CFG.lastDay - 1);
+  var a = start.getDate() + ' ' + MES_[start.getMonth()] + (start.getFullYear() !== end.getFullYear() ? ' ' + start.getFullYear() : '');
+  return a + ' – ' + fmtD_(end);
+}
+function sheetById_(id) {
+  var all = ss_().getSheets();
+  for (var i = 0; i < all.length; i++) if (all[i].getSheetId() === id) return all[i];
+  return null;
+}
+function cyclesList_() {
+  try { return JSON.parse(props_().getProperty('CYCLES') || '[]'); } catch (e) { return []; }
+}
+/** Ciclos archivados (que aún existen) y el ciclo actual. */
+function cyclesInfo_() {
+  var list = cyclesList_().filter(function (c) { return !!sheetById_(c.sid4D); });
+  var n = list.length ? list[list.length - 1].n + 1 : 1;
+  var st = startDate_();
+  return {
+    archived: list,
+    current: { n: n, label: 'Ciclo ' + n + ' (actual)', start: iso_(st), end: iso_(addDays_(st, CFG.lastDay - 1)), range: rangeLabel_(st) }
+  };
+}
+function uniqueName_(name) {
+  var n = name, k = 2;
+  while (ss_().getSheetByName(n)) n = name + ' (' + (k++) + ')';
+  return n;
+}
+function archiveSheet_(src, name) {
+  var ss = ss_();
+  var copy = src.copyTo(ss).setName(uniqueName_(name));
+  try { copy.setTabColor('#9A95AE'); } catch (e) {}
+  ss.setActiveSheet(copy);
+  ss.moveActiveSheet(ss.getNumSheets());
+  return copy;
+}
+function sameBlock_(a, b, r, c, nr, nc) {
+  var x = a.getRange(r, c, nr, nc).getValues(), y = b.getRange(r, c, nr, nc).getValues();
+  return JSON.stringify(x) === JSON.stringify(y);
+}
+
+/**
+ * Archiva el ciclo actual (copia las hojas «Bitácora 4D» y «Bitácora» con nombre de ciclo),
+ * limpia sólo los registros del participante y fija la fecha del nuevo Día 1.
+ * Conserva preguntas, fórmulas, formatos, listas desplegables, notas y el plan (toma/descanso, dosis asignadas).
+ */
+function startNewCycle_(isoDate) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) throw new Error('Fecha inválida');
+  var lock = LockService.getDocumentLock();
+  lock.waitLock(30000);
+  try {
+    var info = cyclesInfo_(), n = info.current.n, label = info.current.range;
+    var s4 = sh_(CFG.sheet4D), sE = sh_(CFG.sheetEnea);
+    var lastCol4 = s4.getLastColumn(), lastColE = sE.getLastColumn();
+
+    // 1) Archivar y verificar la copia antes de borrar nada
+    var a4 = archiveSheet_(s4, 'Bitácora 4D · Ciclo ' + n + ' (' + label + ')');
+    var aE = archiveSheet_(sE, 'Bitácora (Eneatipo) · Ciclo ' + n + ' (' + label + ')');
+    SpreadsheetApp.flush();
+    if (!sameBlock_(s4, a4, 1, 1, R4D.eeLast, lastCol4) || !sameBlock_(sE, aE, REN.cambios, 1, REN.last - REN.cambios + 1, lastColE)) {
+      throw new Error('La copia de respaldo no coincide; no se borró nada.');
+    }
+    ss_().setActiveSheet(s4);
+
+    // 2) Limpiar registros de la Bitácora 4D (desde la columna E)
+    var w4 = lastCol4 - 4;
+    s4.getRange(R4D.gmFirst, 5, R4D.gmLast - R4D.gmFirst + 1, w4).clearContent();
+    s4.getRange(R4D.eeFirst, 5, R4D.eeLast - R4D.eeFirst + 1, w4).clearContent();
+    entries_().forEach(function (e) {
+      var c = col4D_(e.id);
+      if (!e.special) s4.getRange(R4D.hora, c).clearContent();
+      s4.getRange(R4D.estado, c).setValue('Registro pendiente');
+    });
+
+    // 3) Limpiar Eneatipo (filas 34–51, desde la columna D)
+    sE.getRange(REN.cambios, 4, REN.last - REN.cambios + 1, lastColE - 3).clearContent();
+
+    // 4) Guardar el ciclo archivado y la nueva fecha
+    var list = cyclesList_();
+    list.push({ n: n, start: info.current.start, end: info.current.end, label: 'Ciclo ' + n + ' (' + label + ')', sid4D: a4.getSheetId(), sidEn: aE.getSheetId() });
+    props_().setProperty('CYCLES', JSON.stringify(list));
+    props_().setProperty('START', isoDate);
+    SpreadsheetApp.flush();
+    return getBootstrap_();
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /* ---------- Ajustes ---------- */

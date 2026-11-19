@@ -12,7 +12,9 @@ App para registrar la **Bitácora 4D** desde el celular. Lee y escribe directame
 | 🌙 **Sueños** | Diario de sueños | Fila «Sueños» de la «Bitácora 4D» |
 | 🎭 **Eneatipo** (en Más) | Pasión, 15 rasgos y virtud con escala −3…+3 | Hoja «Bitácora» |
 | 📝 **Formulario** (en Más) | Datos generales, casillas de salud y respuestas abiertas | Hoja «Formulario de inicio» |
-| ⚙️ **Ajustes** (en Más) | Cambiar la fecha del Día 1 para empezar un ciclo nuevo | Propiedades del script |
+| 🔄 **Ciclo nuevo** (Hoy o Más ▸ Ajustes) | Archiva el ciclo actual en hojas nuevas («Bitácora 4D · Ciclo N (fechas)»), limpia sólo tus registros y fija el nuevo Día 1 | Hojas de archivo en tu mismo archivo |
+| 📈 **Comparar ciclos** (en Progreso) | Gráfica con los ciclos superpuestos y tabla de promedios por ciclo | (solo lectura) |
+| ⚙️ **Ajustes** (en Más) | Ciclos, corregir la fecha del Día 1, app instalable | Propiedades del script |
 
 ## Instalación (una sola vez, ~5 minutos)
 
@@ -55,6 +57,14 @@ Para regenerar `docs/index.html` después de cambiar `app/Index.html`: `node too
 ### Actualizar a una versión nueva
 
 Pega el código nuevo en `App` e `Index`, guarda y ve a **Implementar ▸ Gestionar implementaciones**. Para **cada** implementación: ✏️ ▸ Versión: **Nueva versión** ▸ Implementar. Las URL no cambian.
+
+## Ciclos
+
+Al empezar un ciclo nuevo la app: (1) copia «Bitácora 4D» y «Bitácora» a hojas nuevas con el número y las fechas del ciclo
+y comprueba que la copia sea idéntica; (2) borra en las hojas principales sólo los puntajes y comentarios (filas 10–30),
+la hora y el estado (que vuelve a «Registro pendiente»), y en el Eneatipo las filas 34–51; (3) guarda la nueva fecha del Día 1.
+Se conservan preguntas, fórmulas, formatos, listas desplegables, notas y el plan (toma/descanso, «Calibración», «T»).
+Si la copia no coincide, no se borra nada.
 
 ## Cómo se ubican los datos
 

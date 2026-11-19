@@ -266,9 +266,11 @@ function viewHoy(){
     var before=b.today<ents[1].date;
     h+='<div class="card hero"><div class="muted small">'+esc(fdate(b.today,true))+'</div>'+
        '<div class="big" style="font-size:24px">'+(before?'Tu proceso empieza el '+esc(fdate(ents[1].date)):'Tu ciclo de 86 días terminó el '+esc(fdate(last.date)))+'</div>'+
-       '<p class="muted small" style="margin:8px 0 12px">Puedes seguir completando cualquier día, o empezar un ciclo nuevo cambiando la fecha de inicio en <b>Más ▸ Ajustes</b>.</p>'+
-       '<button class="btn light" onclick="openEntry(\''+suggestedId()+'\')">✍️ Abrir '+esc(entryById(suggestedId()).label)+'</button></div>';
+       '<p class="muted small" style="margin:8px 0 12px">'+(before?'Mientras tanto puedes completar tu línea base.':'Puedes seguir completando cualquier día, o empezar un ciclo nuevo: tus registros actuales quedan guardados.')+'</p>'+
+       '<div class="row" style="flex-wrap:wrap"><button class="btn light" onclick="openEntry(\''+suggestedId()+'\')">✍️ Abrir '+esc(entryById(suggestedId()).label)+'</button>'+
+       (before?'':'<button class="btn" style="background:rgba(255,255,255,.18)" onclick="newCycleSheet()">🔄 Ciclo nuevo</button>')+'</div></div>';
   }
+  h+='<div class="card" style="padding:12px 16px"><div class="spread"><span class="small muted">'+esc(b.cycles.current.label.replace(' (actual)',''))+' · '+esc(b.cycles.current.range)+'</span>'+(b.cycles.archived.length?'<span class="pill">'+b.cycles.archived.length+' archivado'+(b.cycles.archived.length>1?'s':'')+'</span>':'')+'</div></div>';
   h+='<div class="card"><div class="spread"><div><div class="muted small">Días finalizados</div><div style="font-size:24px;font-weight:800">'+done+' <span class="muted small">/ '+ents.length+'</span></div></div>'+
      '<div><div class="muted small">Con algún registro</div><div style="font-size:24px;font-weight:800">'+withData+'</div></div></div></div>';
   h+='<div class="card"><h2>Calendario del proceso</h2><p class="muted small" style="margin:0 0 10px">Toca un día para abrirlo.</p><div class="grid-days">';
@@ -423,46 +425,75 @@ function closeSheet(){$('#sheetBg').classList.remove('show')}
 $('#sheetBg').onclick=function(e){if(e.target.id==='sheetBg')closeSheet()};
 
 /* ============ PROGRESO ============ */
+var CYC_COLORS=['var(--brand)','#2A9D8F','#E76F51','#8D99AE','#C9A227'];
+function cycleHasData(c){return Object.keys(c.series).some(function(r){return c.series[r].some(function(v){return v!==null})})}
+function avgDays(s){var b=S.boot,vals=s.filter(function(v,i){return i>0&&v!==null&&!b.entries[i].special});return vals.length?vals.reduce(function(a,c){return a+c},0)/vals.length:null}
+function badge(v,dec){return '<span class="badge" style="background:'+scoreColor(v)+'">'+(v===null?'—':(v>0?'+':'')+(dec?v.toFixed(1):v))+'</span>'}
 function viewProg(){
   if(!S.progress){loading('Calculando tu progreso…');api('getProgress').then(function(p){S.progress=p;viewProg()}).catch(showErr);return}
-  var p=S.progress,b=S.boot;
+  var p=S.progress,b=S.boot,cyc=p.cycles||[{key:'actual',label:'Ciclo actual',series:p.series}];
   if(!S.progItem)S.progItem=String(b.items.filter(function(i){return i.group==='ee'})[2].row);
+  var withData=cyc.filter(cycleHasData);
+  if(!S.showCycles){S.showCycles={};(withData.length?withData:cyc).slice(0,2).forEach(function(c){S.showCycles[c.key]=true})}
+  if(!S.cmpCycle||!cyc.some(function(c){return c.key===S.cmpCycle}))S.cmpCycle=(withData[0]||cyc[0]).key;
   var h='<div class="card"><h2>Evolución por estado</h2><div class="chips" id="pchips">';
   b.items.forEach(function(it){h+='<button class="chip'+(String(it.row)===S.progItem?' on':'')+'" data-r="'+it.row+'">'+esc(shortLabel(it.label))+'</button>'});
-  h+='</div><div id="chartBox" style="margin-top:10px"></div></div>';
-  h+='<div class="card"><h2>Antes vs. durante</h2><p class="muted small" style="margin:0 0 10px">Promedio de la <b>línea base</b> comparado con el promedio de los días registrados.</p><div class="cmp"><div class="h">Estado</div><div class="h" style="text-align:center">Base</div><div class="h" style="text-align:center">Días</div>';
-  b.items.forEach(function(it){
-    var s=p.series[it.row];var base=s[0];
-    var vals=s.filter(function(v,i){return i>0&&v!==null&&!b.entries[i].special});
-    var avg=vals.length?vals.reduce(function(a,c){return a+c},0)/vals.length:null;
-    h+='<div>'+esc(shortLabel(it.label))+'</div><div style="text-align:center"><span class="badge" style="background:'+scoreColor(base)+'">'+scoreTxt(base)+'</span></div>'+
-       '<div style="text-align:center"><span class="badge" style="background:'+scoreColor(avg)+'">'+(avg===null?'—':(avg>0?'+':'')+avg.toFixed(1))+'</span></div>';
-  });
+  h+='</div>';
+  if(cyc.length>1){
+    h+='<div class="chips" id="cchips" style="margin-top:8px">';
+    cyc.forEach(function(c,i){var on=!!S.showCycles[c.key];h+='<button class="chip" data-k="'+c.key+'" style="'+(on?'background:'+CYC_COLORS[i%5]+';color:#fff;border-color:transparent':'')+'">'+(on?'● ':'○ ')+esc(c.label.replace(/ \(.*\)$/,''))+'</button>'});
+    h+='</div>';
+  }
+  h+='<div id="chartBox" style="margin-top:10px"></div></div>';
+  // antes vs durante
+  h+='<div class="card"><h2>Antes vs. durante</h2><p class="muted small" style="margin:0 0 10px">Promedio de la <b>línea base</b> comparado con el promedio de los días registrados.</p>';
+  if(cyc.length>1){h+='<div class="chips" id="bchips" style="margin-bottom:10px">';cyc.forEach(function(c){h+='<button class="chip'+(c.key===S.cmpCycle?' on':'')+'" data-k="'+c.key+'">'+esc(c.label.replace(/ \(.*\)$/,''))+'</button>'});h+='</div>'}
+  var cc=cyc.filter(function(c){return c.key===S.cmpCycle})[0];
+  h+='<div class="cmp"><div class="h">Estado</div><div class="h" style="text-align:center">Base</div><div class="h" style="text-align:center">Días</div>';
+  b.items.forEach(function(it){var s=cc.series[it.row];h+='<div>'+esc(shortLabel(it.label))+'</div><div style="text-align:center">'+badge(s[0])+'</div><div style="text-align:center">'+badge(avgDays(s),true)+'</div>'});
   h+='</div></div>';
+  // comparar ciclos
+  if(withData.length>1){
+    var cols=withData.slice(0,3);
+    h+='<div class="card"><h2>Comparar ciclos</h2><p class="muted small" style="margin:0 0 10px">Promedio de los días registrados en cada ciclo.</p>'+
+      '<div class="cmp" style="grid-template-columns:1fr'+cols.map(function(){return ' 64px'}).join('')+'"><div class="h">Estado</div>'+
+      cols.map(function(c){return '<div class="h" style="text-align:center">'+esc(c.label.replace(/^Ciclo (\d+).*$/,'C$1'))+'</div>'}).join('');
+    b.items.forEach(function(it){h+='<div>'+esc(shortLabel(it.label))+'</div>'+cols.map(function(c){return '<div style="text-align:center">'+badge(avgDays(c.series[it.row]),true)+'</div>'}).join('')});
+    h+='</div><p class="small muted" style="margin:10px 0 0">'+cols.map(function(c){return esc(c.label.replace(/^Ciclo (\d+)/,'C$1 = Ciclo $1'))}).join(' · ')+'</p></div>';
+  }
   $('#view').innerHTML=h;
   $$('#pchips .chip').forEach(function(c){c.onclick=function(){S.progItem=c.dataset.r;$$('#pchips .chip').forEach(function(x){x.classList.toggle('on',x===c)});drawChart()}});
+  $$('#cchips .chip').forEach(function(c){c.onclick=function(){S.showCycles[c.dataset.k]=!S.showCycles[c.dataset.k];var y=window.scrollY;viewProg();window.scrollTo(0,y)}});
+  $$('#bchips .chip').forEach(function(c){c.onclick=function(){S.cmpCycle=c.dataset.k;var y=window.scrollY;viewProg();window.scrollTo(0,y)}});
   drawChart();
 }
 function shortLabel(l){return l.replace(/^●\s*/,'').replace(/^[^\wÁÉÍÓÚÑáéíóúñ¿]+\s*/,'').replace(/^\d+\.\s*/,'').replace(/^¿Cómo te has sentido hoy\?.*$/,'Cómo me sentí').replace(/^¿Has hecho, sentido o pensado algo distinto.*$/,'Algo distinto').replace(/Sucesos o Experiencias trans-personal/,'Transpersonal')}
 function drawChart(){
-  var p=S.progress,b=S.boot,s=p.series[S.progItem];
-  var pts=[];s.forEach(function(v,i){if(v!==null)pts.push({i:i,v:v,e:b.entries[i]})});
+  var p=S.progress,b=S.boot,cyc=p.cycles||[{key:'actual',label:'Ciclo actual',series:p.series}];
   var box=$('#chartBox');
-  if(!pts.length){box.innerHTML='<div class="empty">Aún no hay registros de este estado.</div>';return}
+  var shown=cyc.map(function(c,i){return {c:c,color:CYC_COLORS[i%5]}}).filter(function(x){return cyc.length===1||S.showCycles[x.c.key]});
+  var any=shown.some(function(x){return x.c.series[S.progItem].some(function(v){return v!==null})});
+  if(!any){box.innerHTML='<div class="empty">'+(shown.length?'Aún no hay registros de este estado en los ciclos elegidos.':'Elige al menos un ciclo.')+'</div>';return}
   var W=600,H=240,L=34,R=10,T=12,B=30,n=b.entries.length;
   var x=function(i){return L+(W-L-R)*i/(n-1)},y=function(v){return T+(H-T-B)*(3-v)/6};
   var css=getComputedStyle(document.documentElement);
-  var line=css.getPropertyValue('--line'),muted=css.getPropertyValue('--muted'),brand=css.getPropertyValue('--brand');
+  var line=css.getPropertyValue('--line'),muted=css.getPropertyValue('--muted');
   var g='<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Gráfica de evolución">';
   for(var v=-3;v<=3;v++){g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="'+line+'" stroke-width="'+(v===0?1.5:1)+'"/><text x="'+(L-8)+'" y="'+(y(v)+4)+'" text-anchor="end" font-size="11" fill="'+muted+'">'+(v>0?'+'+v:v)+'</text>'}
-  // marcas: base, día 1, cierre
   [['LB','Base'],['C1','Cierre'],['C2','Fin']].forEach(function(m){var i=entryIndex(m[0]);if(i<0)return;g+='<line x1="'+x(i)+'" x2="'+x(i)+'" y1="'+T+'" y2="'+(H-B)+'" stroke="'+line+'" stroke-dasharray="3 3"/><text x="'+x(i)+'" y="'+(H-10)+'" text-anchor="middle" font-size="11" fill="'+muted+'">'+m[1]+'</text>'});
-  var d='';pts.forEach(function(pt,k){var cont=k&&pt.i-pts[k-1].i<=2;d+=(cont?'L':'M')+x(pt.i).toFixed(1)+' '+y(pt.v).toFixed(1)});
-  g+='<path d="'+d+'" fill="none" stroke="'+brand+'" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
-  pts.forEach(function(pt){g+='<circle cx="'+x(pt.i)+'" cy="'+y(pt.v)+'" r="5" fill="'+scoreColor(pt.v)+'" stroke="var(--card)" stroke-width="1.5"><title>'+esc(pt.e.label+': '+scoreTxt(pt.v))+'</title></circle>'});
+  var foot=[];
+  shown.slice().reverse().forEach(function(sc,k){
+    var pts=[];sc.c.series[S.progItem].forEach(function(v,i){if(v!==null)pts.push({i:i,v:v,e:b.entries[i]})});
+    if(!pts.length)return;
+    var main=k===shown.length-1;
+    var d='';pts.forEach(function(pt,j){var cont=j&&pt.i-pts[j-1].i<=2;d+=(cont?'L':'M')+x(pt.i).toFixed(1)+' '+y(pt.v).toFixed(1)});
+    g+='<path d="'+d+'" fill="none" stroke="'+sc.color+'" stroke-width="'+(main?2.5:2)+'" stroke-opacity="'+(main?1:.8)+'" stroke-linejoin="round" stroke-linecap="round"/>';
+    pts.forEach(function(pt){g+='<circle cx="'+x(pt.i)+'" cy="'+y(pt.v)+'" r="'+(main?5:3.5)+'" fill="'+(shown.length>1?sc.color:scoreColor(pt.v))+'" stroke="var(--card)" stroke-width="1.5"><title>'+esc(sc.c.label.replace(/ \(.*\)$/,'')+' · '+pt.e.label+': '+scoreTxt(pt.v))+'</title></circle>'});
+    var lp=pts[pts.length-1];
+    foot.unshift('<span style="color:'+sc.color+';font-weight:700">'+esc(sc.c.label.replace(/ \(.*\)$/,''))+'</span>: '+pts.length+' reg. · último '+esc(lp.e.label)+' '+badge(lp.v));
+  });
   g+='</svg>';
-  var lastPt=pts[pts.length-1];
-  box.innerHTML=g+'<div class="spread small muted" style="margin-top:6px"><span>'+pts.length+' registros</span><span>Último: '+esc(lastPt.e.label)+' <span class="badge" style="background:'+scoreColor(lastPt.v)+'">'+scoreTxt(lastPt.v)+'</span></span></div>';
+  box.innerHTML=g+'<div class="small muted" style="margin-top:6px;line-height:1.9">'+foot.join('<br>')+'</div>';
 }
 
 /* ============ SUEÑOS ============ */
@@ -590,9 +621,15 @@ function saveForm(){
 
 /* --- Ajustes --- */
 function viewAjustes(){
-  var b=S.boot;
-  $('#view').innerHTML=backBtn()+'<div class="card"><h2>Fecha del Día 1</h2><p class="muted small" style="margin:0 0 10px">La app calcula qué día del proceso es hoy a partir de esta fecha. Cámbiala si empiezas un ciclo nuevo.</p>'+
-    '<input type="date" id="startIn" value="'+esc(b.start)+'"><button class="btn block" style="margin-top:10px" id="startSave">Guardar fecha</button></div>'+
+  var b=S.boot, cy=b.cycles;
+  var arch=cy.archived.slice().reverse().map(function(c){return '<li>'+esc(c.label)+'</li>'}).join('');
+  $('#view').innerHTML=backBtn()+
+    '<div class="card"><h2>🔄 Ciclos</h2><div class="spread" style="margin-bottom:10px"><div><div style="font-weight:800">'+esc(cy.current.label)+'</div><div class="small muted">'+esc(cy.current.range)+'</div></div></div>'+
+    (arch?'<div class="small muted" style="margin:0 0 4px">Archivados (en hojas aparte de tu archivo):</div><ul class="small" style="margin:0 0 12px;padding-left:20px">'+arch+'</ul>':'')+
+    '<button class="btn block" onclick="newCycleSheet()">🔄 Empezar ciclo nuevo</button>'+
+    '<details style="margin-top:12px"><summary class="small" style="cursor:pointer;color:var(--muted)">Corregir la fecha del Día 1 sin archivar</summary>'+
+    '<p class="small muted" style="margin:8px 0">Sólo si te equivocaste de fecha en este mismo ciclo. No archiva ni borra nada.</p>'+
+    '<input type="date" id="startIn" value="'+esc(b.start)+'"><button class="btn ghost block" style="margin-top:8px" id="startSave">Guardar fecha</button></details></div>'+
     (MODE==='gas'?'<div class="card" id="pwaCard"><h2>📲 App instalable</h2><div class="loading" style="padding:10px 0"><div class="spin"></div></div></div>':
      '<div class="card"><h2>📲 Instalar</h2>'+(INSTALL_EVT?'<button class="btn block" id="instBtn">Instalar la app</button>':'<p class="small" style="margin:0"><b>Android (Chrome):</b> menú ⋮ ▸ «Instalar app» o «Agregar a la pantalla principal».<br><b>iPhone (Safari):</b> Compartir ▸ «Agregar a inicio».</p>')+
      '<button class="btn ghost block" style="margin-top:10px" id="discBtn">Desconectar este celular</button></div>');
@@ -601,6 +638,28 @@ function viewAjustes(){
   if(MODE==='gas')loadPwaCard();
   var ib=$('#instBtn');if(ib)ib.onclick=function(){INSTALL_EVT.prompt();INSTALL_EVT=null};
   var db=$('#discBtn');if(db)db.onclick=function(){if(confirm('¿Desconectar? Tendrás que volver a conectar este celular.')){setCfg(null);location.reload()}};
+}
+function todayIso(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)}
+function newCycleSheet(){
+  var cy=S.boot.cycles.current;
+  $('#sheet').innerHTML='<h2 style="margin-top:0">🔄 Empezar ciclo nuevo</h2>'+
+    '<p class="small" style="margin:0 0 10px">Esto hará, en este orden:</p>'+
+    '<ol class="small" style="margin:0 0 12px;padding-left:20px;line-height:1.55">'+
+    '<li><b>Archivar</b> tu '+esc(cy.label.replace(' (actual)',''))+' ('+esc(cy.range)+') en hojas nuevas de tu archivo. Nada se pierde.</li>'+
+    '<li><b>Limpiar</b> tus registros (puntajes, comentarios, hora y estado) en la Bitácora 4D y el Eneatipo. Se conservan las preguntas, el formato y el plan de tomas.</li>'+
+    '<li>Poner la fecha del nuevo <b>Día 1</b>.</li></ol>'+
+    '<div class="field"><label>Fecha del nuevo Día 1</label><input type="date" id="ncDate" value="'+todayIso()+'"></div>'+
+    '<p class="small muted" style="margin:-4px 0 10px">La línea base es el día anterior. Si quieres registrarla antes de empezar, elige una fecha futura.</p>'+
+    '<label class="check" style="border:none"><input type="checkbox" id="ncOk"><span class="small">Entiendo que la Bitácora 4D quedará vacía y mis registros pasarán a la hoja de archivo.</span></label>'+
+    '<div class="row" style="margin-top:12px"><button class="btn ghost" style="flex:1" onclick="closeSheet()">Cancelar</button><button class="btn" style="flex:2" id="ncGo" disabled>Empezar ciclo</button></div>';
+  $('#sheetBg').classList.add('show');
+  $('#ncOk').onchange=function(){$('#ncGo').disabled=!this.checked};
+  $('#ncGo').onclick=function(){
+    var v=$('#ncDate').value; if(!v){toast('Elige una fecha');return}
+    var b=this;b.disabled=true;b.textContent='Archivando…';
+    api('startNewCycle',v).then(function(nb){S.boot=nb;S.entryId=suggestedId();S.progress=null;S.cmpCycle=null;closeSheet();toast('✅ Ciclo archivado. ¡Empieza tu '+nb.cycles.current.label.replace(' (actual)','')+'!');go('hoy')})
+      .catch(function(e){b.disabled=false;b.textContent='Empezar ciclo';toast('⚠️ '+e.message)});
+  };
 }
 var INSTALL_EVT=null;
 window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();INSTALL_EVT=e});
