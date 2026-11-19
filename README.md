@@ -31,9 +31,28 @@ App para registrar la **Bitácora 4D** desde el celular. Lee y escribe directame
    - **iPhone (Safari):** Compartir ▸ «Agregar a inicio».
    - **Android (Chrome):** menú ⋮ ▸ «Agregar a la pantalla principal».
 
+## App instalable (pantalla completa, sin barra de script.google.com)
+
+La carpeta [`docs/`](docs/) es la misma app publicada en GitHub Pages como app instalable (PWA):
+**https://alanronny78-commits.github.io/Micro-Dosis/**. Habla con tu hoja a través del mismo script, protegido con una clave secreta.
+
+1. **Actualiza el script** con los `App.gs` e `Index.html` nuevos (ver «Actualizar a una versión nueva»). Al guardar, acepta los permisos nuevos.
+2. **Crea una segunda implementación** (la de «Solo yo» se queda como está):
+   **Implementar ▸ Nueva implementación ▸ Aplicación web** · Ejecutar como: **Yo** · Quién tiene acceso: **Cualquier usuario** ▸ Implementar ▸ copia la URL `/exec`.
+   Sin la clave, esa URL no muestra ni guarda nada.
+3. **Publica la app en GitHub Pages** (una sola vez):
+   - Repositorio ▸ **Settings ▸ General ▸ Danger Zone ▸ Change visibility ▸ Public** (GitHub Pages gratis lo requiere; en el repositorio sólo hay código, nunca tus datos).
+   - **Settings ▸ Pages ▸ Build and deployment**: Source **Deploy from a branch**, rama **`claude/affectionate-maxwell-2nzu70`**, carpeta **`/docs`** ▸ Save. Espera 1–2 minutos.
+4. **Conecta la app:** abre tu app actual (la de «Solo yo») ▸ **Más ▸ Ajustes ▸ App instalable** ▸ pega la URL del paso 2 ▸ **Guardar URL**.
+5. **En el celular:** abre la app actual ▸ **Más ▸ Ajustes ▸ 📲 Abrir app instalable**. Se abre la nueva app ya conectada. En Chrome: menú ⋮ ▸ **Instalar app**.
+
+Si alguna vez quieres invalidar la clave (por ejemplo, perdiste el celular): en el editor de Apps Script ejecuta la función `cambiarClave` y vuelve a conectar.
+
+Para regenerar `docs/index.html` después de cambiar `app/Index.html`: `node tools/build-pwa.js`.
+
 ### Actualizar a una versión nueva
 
-Pega el código nuevo en `App` e `Index`, guarda y ve a **Implementar ▸ Gestionar implementaciones ▸ ✏️ ▸ Versión: Nueva versión ▸ Implementar**. La URL no cambia.
+Pega el código nuevo en `App` e `Index`, guarda y ve a **Implementar ▸ Gestionar implementaciones**. Para **cada** implementación: ✏️ ▸ Versión: **Nueva versión** ▸ Implementar. Las URL no cambian.
 
 ## Cómo se ubican los datos
 

@@ -1,0 +1,17 @@
+{
+  "name": "Microdosis — Bitácora 4D",
+  "short_name": "Microdosis",
+  "description": "Registro diario de la Bitácora 4D, conectado a tu hoja de Google.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F5F3FB",
+  "theme_color": "#4A3B8F",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

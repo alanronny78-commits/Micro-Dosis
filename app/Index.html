@@ -132,14 +132,35 @@ nav.tabs button.on{color:var(--brand)} nav.tabs button.on .ic{filter:none;opacit
 <div class="sheet-bg" id="sheetBg"><div class="sheet" id="sheet"></div></div>
 
 <script>
-/* ============ Conexión con Apps Script ============ */
+/* ============ Conexión ============ */
+// «gas»: la app se abre desde Apps Script (google.script.run).
+// «web»: la app instalable (GitHub Pages) habla con el script por fetch.
+var MODE=(window.google&&google.script&&google.script.run)?'gas':'web';
+var CFG_KEY='md_cfg';
+function getCfg(){try{return JSON.parse(localStorage.getItem(CFG_KEY)||'null')}catch(e){return null}}
+function setCfg(c){try{if(c)localStorage.setItem(CFG_KEY,JSON.stringify(c));else localStorage.removeItem(CFG_KEY)}catch(e){}}
 function api(fn){
-  var args=[].slice.call(arguments,1);
-  return new Promise(function(res,rej){
-    var r=google.script.run.withSuccessHandler(res).withFailureHandler(function(e){rej(e&&e.message?e:new Error(String(e)))});
-    r[fn].apply(r,args);
-  });
+  var args=[].slice.call(arguments,1), c=getCfg()||{};
+  if(MODE==='gas'){
+    return new Promise(function(res,rej){
+      google.script.run.withSuccessHandler(res).withFailureHandler(function(e){rej(e&&e.message?e:new Error(String(e)))}).rpc(c.key||'',fn,args);
+    });
+  }
+  if(!c.url||!c.key)return Promise.reject(new Error('SIN_CONFIG'));
+  return fetch(c.url,{method:'POST',redirect:'follow',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({key:c.key,fn:fn,args:args})})
+    .then(function(r){if(!r.ok)throw new Error('El servidor respondió '+r.status);return r.json()})
+    .then(function(j){if(!j.ok)throw new Error(j.error||'Error');return j.data});
 }
+// Enlace de conexión: …/#setup=<base64(url|clave)>
+function readSetupHash(){
+  var m=location.hash.match(/setup=([A-Za-z0-9+\/=_-]+)/);
+  if(!m)return false;
+  try{var p=atob(m[1].replace(/-/g,'+').replace(/_/g,'/')).split('|');if(p[0]&&p[1])setCfg({url:p[0],key:p[1]})}catch(e){}
+  history.replaceState(null,'',location.pathname+location.search);
+  return true;
+}
+readSetupHash();
+window.addEventListener('hashchange',function(){if(readSetupHash()){loading('Conectando…');start()}});
 
 /* ============ Estado ============ */
 var S={boot:null,tab:'hoy',sub:null,entryId:null,entry:null,orig:null,dirty:false,progress:null,progItem:null,enea:null,eneaOrig:null,form:null,formOrig:null,eneaId:null};
@@ -159,7 +180,25 @@ function autosize(t){t.style.height='auto';t.style.height=Math.min(t.scrollHeigh
 
 /* ============ Arranque ============ */
 function start(){
-  api('getBootstrap').then(function(b){S.boot=b;S.entryId=suggestedId();render()}).catch(showErr);
+  api('getBootstrap').then(function(b){S.boot=b;S.entryId=suggestedId();render()}).catch(function(e){
+    if(/SIN_CONFIG|CLAVE_INVALIDA/.test(e.message))viewSetup(/CLAVE_INVALIDA/.test(e.message));else showErr(e);
+  });
+}
+function viewSetup(bad){
+  var c=getCfg()||{};
+  $('#subtitle').textContent='Conectar con tu hoja';
+  $('#view').innerHTML='<div class="card"><h2>🔗 Conectar con tu hoja</h2>'+
+    (bad?'<div class="err" style="margin-bottom:10px">La clave no es válida o cambió. Vuelve a conectar.</div>':'')+
+    '<p class="small muted" style="margin:0 0 6px">La forma más fácil: abre tu app de Apps Script en este celular, ve a <b>Más ▸ Ajustes ▸ App instalable</b> y toca <b>«Abrir app instalable»</b>. Se conecta sola.</p>'+
+    '<p class="small muted" style="margin:0 0 10px">O pega los datos a mano:</p>'+
+    (MODE==='web'?'<div class="field"><label>URL del script (termina en /exec)</label><input type="text" id="cUrl" value="'+esc(c.url||'')+'" placeholder="https://script.google.com/macros/s/…/exec"></div>':'')+
+    '<div class="field"><label>Clave</label><input type="text" id="cKey" value="'+esc(c.key||'')+'" autocomplete="off"></div>'+
+    '<button class="btn block" id="cGo">Conectar</button></div>';
+  $('#cGo').onclick=function(){
+    var n={url:MODE==='web'?$('#cUrl').value.trim():'',key:$('#cKey').value.trim()};
+    if((MODE==='web'&&!n.url)||!n.key){toast('Completa los datos');return}
+    setCfg(n);loading('Conectando…');start();
+  };
 }
 function showErr(e){
   $('#view').innerHTML='<div class="card err">⚠️ '+esc(e.message||e)+'</div><button class="btn block" onclick="location.reload()">Reintentar</button>';
@@ -168,10 +207,10 @@ function showErr(e){
 function todayEntry(){var t=S.boot.today;return S.boot.entries.filter(function(e){return !e.special&&e.date===t})[0]||null}
 function suggestedId(){
   var t=todayEntry(); if(t) return t.id;
-  // si el ciclo terminó o no inició: primer día pendiente, si no el último día
+  // Sin día de hoy: antes del inicio → línea base; después → último día (no línea especial) con datos
   var ents=S.boot.entries;
   if(S.boot.today<ents[1].date) return 'LB';
-  var last=null; ents.forEach(function(e){if(e.filled>0)last=e});
+  var last=null; ents.forEach(function(e){if(e.filled>0&&!e.special&&e.date<=S.boot.today)last=e});
   return last?last.id:'D1';
 }
 function entryById(id){return S.boot.entries.filter(function(e){return e.id===id})[0]}
@@ -542,9 +581,31 @@ function viewAjustes(){
   var b=S.boot;
   $('#view').innerHTML=backBtn()+'<div class="card"><h2>Fecha del Día 1</h2><p class="muted small" style="margin:0 0 10px">La app calcula qué día del proceso es hoy a partir de esta fecha. Cámbiala si empiezas un ciclo nuevo.</p>'+
     '<input type="date" id="startIn" value="'+esc(b.start)+'"><button class="btn block" style="margin-top:10px" id="startSave">Guardar fecha</button></div>'+
-    '<div class="card"><h2>Instalar en el celular</h2><p class="small" style="margin:0"><b>iPhone (Safari):</b> botón Compartir ▸ «Agregar a inicio».<br><b>Android (Chrome):</b> menú ⋮ ▸ «Agregar a la pantalla principal».</p></div>';
+    (MODE==='gas'?'<div class="card" id="pwaCard"><h2>📲 App instalable</h2><div class="loading" style="padding:10px 0"><div class="spin"></div></div></div>':
+     '<div class="card"><h2>📲 Instalar</h2>'+(INSTALL_EVT?'<button class="btn block" id="instBtn">Instalar la app</button>':'<p class="small" style="margin:0"><b>Android (Chrome):</b> menú ⋮ ▸ «Instalar app» o «Agregar a la pantalla principal».<br><b>iPhone (Safari):</b> Compartir ▸ «Agregar a inicio».</p>')+
+     '<button class="btn ghost block" style="margin-top:10px" id="discBtn">Desconectar este celular</button></div>');
   $('#startSave').onclick=function(){var v=$('#startIn').value;if(!v)return;this.disabled=true;
     api('setStart',v).then(function(nb){S.boot=nb;S.entryId=suggestedId();S.progress=null;toast('✅ Fecha actualizada');go('hoy')}).catch(function(e){toast('⚠️ '+e.message)})};
+  if(MODE==='gas')loadPwaCard();
+  var ib=$('#instBtn');if(ib)ib.onclick=function(){INSTALL_EVT.prompt();INSTALL_EVT=null};
+  var db=$('#discBtn');if(db)db.onclick=function(){if(confirm('¿Desconectar? Tendrás que volver a conectar este celular.')){setCfg(null);location.reload()}};
+}
+var INSTALL_EVT=null;
+window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();INSTALL_EVT=e});
+function setupLink(s){return s.pwaUrl+'#setup='+btoa(s.apiUrl+'|'+s.key).replace(/\+/g,'-').replace(/\//g,'_')}
+function loadPwaCard(){
+  api('getMobileSetup').then(function(s){
+    var box=$('#pwaCard');if(!box)return;
+    var h='<h2>📲 App instalable</h2><p class="small muted" style="margin:0 0 10px">Versión a pantalla completa, sin la barra de script.google.com, con su propio ícono.</p>'+
+      '<div class="field"><label>1. URL de la implementación pública (termina en /exec)</label><input type="text" id="apiUrl" value="'+esc(s.apiUrl)+'" placeholder="https://script.google.com/macros/s/…/exec"></div>'+
+      '<button class="btn ghost block" id="apiSave">Guardar URL</button>';
+    if(s.apiUrl){
+      h+='<div class="field" style="margin-top:16px"><label>2. En tu celular</label><a class="btn block" style="text-decoration:none" href="'+esc(setupLink(s))+'" target="_blank" rel="noopener">📲 Abrir app instalable</a></div>'+
+         '<p class="small muted" style="margin:6px 0 0">Ábrelo desde esta misma app en tu celular. Luego, en Chrome: menú ⋮ ▸ «Instalar app». No compartas este botón: lleva tu clave.</p>';
+    }
+    box.innerHTML=h;
+    $('#apiSave').onclick=function(){var b=this;b.disabled=true;api('setApiUrl',$('#apiUrl').value).then(function(){toast('✅ URL guardada');loadPwaCard()}).catch(function(e){b.disabled=false;toast('⚠️ '+e.message)})};
+  }).catch(function(e){var box=$('#pwaCard');if(box)box.innerHTML='<h2>📲 App instalable</h2><p class="small muted" style="margin:0">'+esc(/dueño/.test(e.message)?'Disponible sólo al abrir la app con tu cuenta (implementación «Solo yo»).':e.message)+'</p>'});
 }
 
 start();

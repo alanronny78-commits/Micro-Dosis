@@ -10,7 +10,8 @@ var CFG = {
   sheetEnea: 'Bitácora',
   sheetForm: 'Formulario de inicio',
   defaultStart: '2026-04-13',   // Día 1 del proceso (se puede cambiar en Ajustes)
-  lastDay: 86
+  lastDay: 86,
+  pwaUrl: 'https://alanronny78-commits.github.io/Micro-Dosis/'   // app instalable (GitHub Pages)
 };
 
 // Filas de la hoja «Bitácora 4D»
@@ -126,10 +127,103 @@ function writeChanges_(sheet, changes) {
   return changes.length;
 }
 
-/* ===================== API para la app ===================== */
+
+/* ===================== Acceso y API ===================== */
+/*
+ * La app llama sólo a rpc() (desde Apps Script) o a doPost() (desde la app instalable).
+ * Todas las funciones de datos terminan en «_», así que nadie puede llamarlas directamente.
+ * - Si quien abre la app es el dueño de la hoja (implementación «Solo yo»), no hace falta clave.
+ * - En cualquier otro caso (implementación «Cualquier usuario») se exige la clave secreta.
+ */
+
+var API_ = {
+  getBootstrap: function () { return getBootstrap_(); },
+  getEntry: function (id) { return getEntry_(id); },
+  saveEntry: function (id, d) { return saveEntry_(id, d); },
+  getProgress: function () { return getProgress_(); },
+  getJournal: function (row) { return getJournal_(row); },
+  saveItem: function (id, row, score, text) { return saveItem_(id, row, score, text); },
+  getEnea: function (id) { return getEnea_(id); },
+  saveEnea: function (id, d) { return saveEnea_(id, d); },
+  getForm: function () { return getForm_(); },
+  saveForm: function (d) { return saveForm_(d); },
+  setStart: function (iso) { return setStart_(iso); },
+  getMobileSetup: function () { return getMobileSetup_(); },
+  setApiUrl: function (url) { return setApiUrl_(url); }
+};
+var OWNER_ONLY_ = { getMobileSetup: true, setApiUrl: true };
+
+function isOwner_() {
+  try {
+    var a = Session.getActiveUser().getEmail();
+    return !!a && a === Session.getEffectiveUser().getEmail();
+  } catch (e) { return false; }
+}
+
+function sameKey_(a, b) {
+  a = String(a || ''); b = String(b || '');
+  if (!a || a.length !== b.length) return false;
+  var r = 0;
+  for (var i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+
+function rpc(key, fn, args) {
+  var f = API_[fn];
+  if (!f) throw new Error('Función desconocida: ' + fn);
+  if (!isOwner_()) {
+    if (OWNER_ONLY_[fn]) throw new Error('Sólo el dueño de la hoja puede hacer esto.');
+    var k = props_().getProperty('API_KEY');
+    if (!k || !sameKey_(key, k)) throw new Error('CLAVE_INVALIDA');
+  }
+  return f.apply(null, args || []);
+}
+
+/** Punto de entrada para la app instalable (fetch POST con JSON en texto plano). */
+function doPost(e) {
+  var out;
+  try {
+    var req = JSON.parse(e.postData.contents);
+    out = { ok: true, data: rpc(req.key, req.fn, req.args) };
+  } catch (err) {
+    out = { ok: false, error: String(err && err.message ? err.message : err) };
+  }
+  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function newKey_() {
+  var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789', k = '';
+  for (var i = 0; i < 40; i++) k += chars.charAt(Math.floor(Math.random() * chars.length));
+  return k + Utilities.getUuid().replace(/-/g, '');
+}
+
+/** Datos para conectar la app instalable (sólo el dueño). Crea la clave la primera vez. */
+function getMobileSetup_() {
+  var p = props_();
+  var key = p.getProperty('API_KEY');
+  if (!key) { key = newKey_(); p.setProperty('API_KEY', key); }
+  return { key: key, apiUrl: p.getProperty('API_URL') || '', pwaUrl: CFG.pwaUrl };
+}
+
+function setApiUrl_(url) {
+  url = String(url || '').trim();
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(url)) {
+    throw new Error('Pega la URL de la implementación: empieza con https://script.google.com/macros/s/ y termina en /exec');
+  }
+  props_().setProperty('API_URL', url);
+  return getMobileSetup_();
+}
+
+/** Cambia la clave (deja desconectados los celulares que usaban la anterior). Ejecútala desde el editor si la necesitas. */
+function cambiarClave() {
+  props_().setProperty('API_KEY', newKey_());
+  Logger.log('Clave nueva creada. Vuelve a conectar la app instalable desde Más ▸ Ajustes.');
+}
+
+/* ===================== Datos ===================== */
 
 /** Datos iniciales: participante, registros, preguntas, estado de cada día. */
-function getBootstrap() {
+function getBootstrap_() {
   var s = sh_(CFG.sheet4D);
   var lastCol = s.getLastColumn();
   var top = s.getRange(1, 1, R4D.estado, lastCol).getDisplayValues();
@@ -199,7 +293,7 @@ function getBootstrap() {
 }
 
 /** Datos de un registro de la Bitácora 4D. */
-function getEntry(id) {
+function getEntry_(id) {
   var s = sh_(CFG.sheet4D);
   var c = col4D_(id);
   var rng = s.getRange(1, c, R4D.eeLast, 2);
@@ -221,14 +315,14 @@ function getEntry(id) {
   return out;
 }
 
-/** Guarda un registro. data tiene la misma forma que getEntry (sólo se escriben los cambios). */
-function saveEntry(id, data) {
+/** Guarda un registro. data tiene la misma forma que getEntry_ (sólo se escriben los cambios). */
+function saveEntry_(id, data) {
   var lock = LockService.getDocumentLock();
   lock.waitLock(20000);
   try {
     var s = sh_(CFG.sheet4D);
     var c = col4D_(id), t = c + 1;
-    var cur = getEntry(id);
+    var cur = getEntry_(id);
     var ch = [];
     var special = (id === 'LB' || id === 'C1' || id === 'C2');
     if (!special) {
@@ -248,14 +342,14 @@ function saveEntry(id, data) {
       if ((nv.text || '') !== ov.text) ch.push([r, t, safeText_(nv.text || '')]);
     });
     var n = writeChanges_(s, ch);
-    return { saved: n, entry: getEntry(id) };
+    return { saved: n, entry: getEntry_(id) };
   } finally {
     lock.releaseLock();
   }
 }
 
 /** Series de puntajes por pregunta para las gráficas. */
-function getProgress() {
+function getProgress_() {
   var s = sh_(CFG.sheet4D);
   var lastCol = s.getLastColumn();
   var v = s.getRange(R4D.gmFirst, 1, R4D.eeLast - R4D.gmFirst + 1, lastCol).getValues();
@@ -269,7 +363,7 @@ function getProgress() {
 }
 
 /** Todos los textos de una fila (p. ej. Sueños, fila 13) para el diario. */
-function getJournal(row) {
+function getJournal_(row) {
   row = Number(row);
   var s = sh_(CFG.sheet4D);
   var lastCol = s.getLastColumn();
@@ -282,15 +376,15 @@ function getJournal(row) {
 }
 
 /** Guarda una sola pregunta (usado por el Diario de sueños). */
-function saveItem(id, row, score, text) {
+function saveItem_(id, row, score, text) {
   var data = { rows: {} };
   data.rows[row] = { score: score, text: text };
-  return saveEntry(id, data);
+  return saveEntry_(id, data);
 }
 
 /* ---------- Eneatipo (hoja «Bitácora») ---------- */
 
-function getEnea(id) {
+function getEnea_(id) {
   var s = sh_(CFG.sheetEnea);
   var c = colEnea_(id);
   var lab = s.getRange(REN.cambios, 2, REN.last - REN.cambios + 1, 1);
@@ -316,14 +410,14 @@ function getEnea(id) {
   return out;
 }
 
-function saveEnea(id, data) {
+function saveEnea_(id, data) {
   var lock = LockService.getDocumentLock();
   lock.waitLock(20000);
   try {
     var s = sh_(CFG.sheetEnea);
     var c = colEnea_(id);
     if (!c) throw new Error('Este registro no existe en la hoja de Eneatipo.');
-    var cur = getEnea(id), ch = [];
+    var cur = getEnea_(id), ch = [];
     if (data.cambios !== undefined && data.cambios !== cur.cambios) ch.push([REN.cambios, c, data.cambios]);
     (data.items || []).forEach(function (it) {
       var o = cur.items.filter(function (x) { return x.row === it.row; })[0];
@@ -332,7 +426,7 @@ function saveEnea(id, data) {
       if (ns !== os) ch.push([it.row, c, ns]);
       if ((it.text || '') !== o.text) ch.push([it.row, c + 1, safeText_(it.text || '')]);
     });
-    return { saved: writeChanges_(s, ch), enea: getEnea(id) };
+    return { saved: writeChanges_(s, ch), enea: getEnea_(id) };
   } finally {
     lock.releaseLock();
   }
@@ -352,7 +446,7 @@ var FORM = {
   sections: { 'C29': 'Condiciones de salud', 'C36': 'Sobre la intención', 'C46': 'Práctica y preparación' }
 };
 
-function getForm() {
+function getForm_() {
   var s = sh_(CFG.sheetForm);
   var all = s.getRange(1, 1, 64, 17);
   var d = all.getDisplayValues(), v = all.getValues();
@@ -375,9 +469,9 @@ function getForm() {
   return out;
 }
 
-function saveForm(data) {
+function saveForm_(data) {
   var s = sh_(CFG.sheetForm);
-  var cur = getForm(), n = 0;
+  var cur = getForm_(), n = 0;
   var allowed = {};
   cur.general.concat(cur.open).forEach(function (x) { allowed[x.cell] = { type: 'text', value: x.value }; });
   cur.checks.forEach(function (x) { allowed[x.cell] = { type: 'bool', value: x.value }; });
@@ -389,13 +483,13 @@ function saveForm(data) {
     else if (String(nv) !== String(a.value)) { s.getRange(cell).setValue(String(nv)); n++; }
   });
   SpreadsheetApp.flush();
-  return { saved: n, form: getForm() };
+  return { saved: n, form: getForm_() };
 }
 
 /* ---------- Ajustes ---------- */
 
-function setStart(isoDate) {
+function setStart_(isoDate) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) throw new Error('Fecha inválida');
   props_().setProperty('START', isoDate);
-  return getBootstrap();
+  return getBootstrap_();
 }
