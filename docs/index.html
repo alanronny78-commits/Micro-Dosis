@@ -204,12 +204,15 @@ function viewSetup(bad){
       '<p class="small muted" style="margin:0 0 10px">O, si tienes el enlace o la clave, pégalos aquí:</p>'
     :'<p class="small muted" style="margin:0 0 10px">O escribe la clave (en el editor ejecuta la función <b>configurarApp</b> y cópiala del registro):</p>')+
     (MODE==='web'?'<div class="field"><label>Enlace de conexión o URL del script (termina en /exec)</label><input type="text" id="cUrl" value="'+esc(c.url||'')+'" placeholder="https://script.google.com/macros/s/…/exec"></div>':'')+
-    '<div class="field"><label>Clave</label><input type="text" id="cKey" value="'+esc(c.key||'')+'" autocomplete="off"></div>'+
+    '<div class="field"><label>Clave o enlace de conexión</label><input type="text" id="cKey" value="'+esc(c.key||'')+'" autocomplete="off"></div>'+
     '<button class="btn block" id="cGo">Conectar</button></div>';
   $('#cGo').onclick=function(){
-    var raw=MODE==='web'?$('#cUrl').value.trim():'';
-    if(/#setup=/.test(raw)){location.hash=raw.slice(raw.indexOf('#'));return}  // pegó el enlace completo
-    var n={url:raw,key:$('#cKey').value.trim()};
+    var raw=MODE==='web'?$('#cUrl').value.trim():'', k=$('#cKey').value.trim();
+    var link=/#setup=/.test(raw)?raw:(/#setup=/.test(k)?k:'');
+    if(link){  // pegó el enlace de conexión completo (en cualquiera de los dos campos)
+      try{var p=atob(link.split('#setup=')[1].replace(/-/g,'+').replace(/_/g,'/')).split('|');raw=p[0];k=p[1]}catch(e){toast('El enlace no es válido');return}
+    }
+    var n={url:raw,key:k};
     if((MODE==='web'&&!n.url)||!n.key){toast('Completa los datos');return}
     setCfg(n);loading('Conectando…');start();
   };
