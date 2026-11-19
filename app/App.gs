@@ -154,9 +154,14 @@ var API_ = {
 var OWNER_ONLY_ = { getMobileSetup: true, setApiUrl: true };
 
 function isOwner_() {
+  // Fiable cuando la implementación privada usa «Ejecutar como: Usuario que accede a la aplicación web»
+  // y «Quién tiene acceso: Solo yo». Con «Ejecutar como: Yo» Google suele no revelar quién abre la app.
   try {
     var a = Session.getActiveUser().getEmail();
-    return !!a && a === Session.getEffectiveUser().getEmail();
+    if (!a || a !== Session.getEffectiveUser().getEmail()) return false;
+    var owner = null;
+    try { owner = ss_().getOwner(); } catch (e) {}
+    return !owner || owner.getEmail() === a;
   } catch (e) { return false; }
 }
 
@@ -212,6 +217,28 @@ function setApiUrl_(url) {
   }
   props_().setProperty('API_URL', url);
   return getMobileSetup_();
+}
+
+/**
+ * Ejecútala desde el editor (▶ Ejecutar) si la app te pide la clave: muestra en el
+ * «Registro de ejecución» tu clave y, si ya guardaste la URL pública, el enlace de conexión.
+ */
+function configurarApp() {
+  var s = getMobileSetup_();
+  Logger.log('Tu clave: ' + s.key);
+  if (s.apiUrl) {
+    Logger.log('Enlace para conectar la app instalable (ábrelo en tu celular, no lo compartas):');
+    Logger.log(s.pwaUrl + '#setup=' + Utilities.base64Encode(s.apiUrl + '|' + s.key).replace(/\+/g, '-').replace(/\//g, '_'));
+  } else {
+    Logger.log('Aún no guardaste la URL pública. Pégala en la función guardarUrlPublica y ejecútala.');
+  }
+}
+
+/** Pega entre las comillas la URL /exec de la implementación «Cualquier usuario» y ejecuta esta función. */
+function guardarUrlPublica() {
+  var URL_PUBLICA = 'PEGA_AQUI_LA_URL_/exec';
+  setApiUrl_(URL_PUBLICA);
+  configurarApp();
 }
 
 /** Cambia la clave (deja desconectados los celulares que usaban la anterior). Ejecútala desde el editor si la necesitas. */

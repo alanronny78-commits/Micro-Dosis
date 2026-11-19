@@ -190,11 +190,12 @@ function viewSetup(bad){
   $('#subtitle').textContent='Conectar con tu hoja';
   $('#tabs').style.display='none';
   $('#view').innerHTML='<div class="card"><h2>🔗 Conectar con tu hoja</h2>'+
-    (bad?'<div class="err" style="margin-bottom:10px">La clave no es válida o cambió. Vuelve a conectar.</div>':'')+
+    (bad?'<div class="err" style="margin-bottom:10px">'+(MODE==='gas'?'Esta implementación no te reconoce como dueño de la hoja.':'La clave no es válida o cambió. Vuelve a conectar.')+'</div>':'')+
+    (MODE==='gas'?'<p class="small" style="margin:0 0 8px"><b>Solución:</b> en Apps Script ve a <b>Implementar ▸ Gestionar implementaciones</b>, elige la implementación «Solo yo», toca ✏️ y cambia <b>Ejecutar como</b> a <b>«Usuario que accede a la aplicación web»</b>. Elige <b>Nueva versión</b> e Implementar. Luego recarga esta página.</p>':'')+
     (MODE==='web'?'<p style="margin:0 0 8px">Esta app todavía no está conectada. Para conectarla:</p>'+
       '<ol class="small" style="margin:0 0 12px;padding-left:20px;line-height:1.6"><li>Abre la <b>otra</b> app, la de <b>script.google.com</b> (la que ya usabas).</li><li>Ahí ve a <b>Más ▸ Ajustes ▸ App instalable</b>.</li><li>Toca <b>«📲 Abrir app instalable»</b>. Esta app se abrirá ya conectada.</li></ol>'+
       '<p class="small muted" style="margin:0 0 10px">O, si tienes el enlace o la clave, pégalos aquí:</p>'
-    :'<p class="small muted" style="margin:0 0 10px">Escribe la clave de acceso:</p>')+
+    :'<p class="small muted" style="margin:0 0 10px">O escribe la clave (en el editor ejecuta la función <b>configurarApp</b> y cópiala del registro):</p>')+
     (MODE==='web'?'<div class="field"><label>Enlace de conexión o URL del script (termina en /exec)</label><input type="text" id="cUrl" value="'+esc(c.url||'')+'" placeholder="https://script.google.com/macros/s/…/exec"></div>':'')+
     '<div class="field"><label>Clave</label><input type="text" id="cKey" value="'+esc(c.key||'')+'" autocomplete="off"></div>'+
     '<button class="btn block" id="cGo">Conectar</button></div>';

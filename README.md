@@ -23,7 +23,7 @@ App para registrar la **Bitácora 4D** desde el celular. Lee y escribe directame
 5. Pulsa 💾 **Guardar**.
 6. Arriba a la derecha: **Implementar ▸ Nueva implementación**.
    - Tipo (⚙️): **Aplicación web**
-   - Ejecutar como: **Yo**
+   - Ejecutar como: **Usuario que accede a la aplicación web** (así la app sabe que eres tú, sin clave)
    - Quién tiene acceso: **Solo yo** (son datos personales y de salud)
    - Pulsa **Implementar** y acepta los permisos (Google avisa que la app «no está verificada»: es tuya; pulsa *Configuración avanzada ▸ Ir a…*).
 7. Copia la **URL de la aplicación web** (termina en `/exec`) y ábrela en tu celular con la misma cuenta de Google.
@@ -45,6 +45,8 @@ La carpeta [`docs/`](docs/) es la misma app publicada en GitHub Pages como app i
    - **Settings ▸ Pages ▸ Build and deployment**: Source **Deploy from a branch**, rama **`claude/affectionate-maxwell-2nzu70`**, carpeta **`/docs`** ▸ Save. Espera 1–2 minutos.
 4. **Conecta la app:** abre tu app actual (la de «Solo yo») ▸ **Más ▸ Ajustes ▸ App instalable** ▸ pega la URL del paso 2 ▸ **Guardar URL**.
 5. **En el celular:** abre la app actual ▸ **Más ▸ Ajustes ▸ 📲 Abrir app instalable**. Se abre la nueva app ya conectada. En Chrome: menú ⋮ ▸ **Instalar app**.
+
+Si la app te pide la clave: en el editor ejecuta `configurarApp` y mira el «Registro de ejecución» (muestra la clave y el enlace de conexión). Si la tarjeta de Ajustes no aparece, pega la URL pública en la función `guardarUrlPublica` y ejecútala.
 
 Si alguna vez quieres invalidar la clave (por ejemplo, perdiste el celular): en el editor de Apps Script ejecuta la función `cambiarClave` y vuelve a conectar.
 
