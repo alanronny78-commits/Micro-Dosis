@@ -18,6 +18,7 @@ cómo replicarlo para otra persona u otra bitácora, y el código completo de ca
 | 5 | **Correcciones** | Botón «último día registrado», pantalla de conexión clara, reconocimiento del dueño, enlace de conexión, diagnóstico de errores de red. |
 | 6 | **Ciclos** | Botón **«Empezar ciclo nuevo»**: archiva el ciclo en hojas aparte, limpia sólo los registros y fija el nuevo Día 1. **Progreso** compara ciclos. |
 | 7 | **Respaldo** | Esta guía, pruebas automáticas (`tests/`) y un .zip con todo. |
+| 8 | **Recordatorios diarios** | Aviso en el celular vía Google Calendar y correo diario sólo si falta registrar. |
 
 ---
 
@@ -90,6 +91,7 @@ Datos generales en E6, E8, E10, H10, K10, N10, H12; casillas en C/F/I/L de las f
 | `API_KEY` | Clave secreta de la app instalable. |
 | `API_URL` | URL `/exec` de la implementación pública. |
 | `CYCLES` | Lista JSON de ciclos archivados (número, fechas e ID de sus hojas). |
+| `REMINDERS` | Configuración de recordatorios (correo y calendario, horas, ID del evento). |
 
 ---
 
@@ -159,6 +161,13 @@ Acepta los permisos («Google no ha verificado esta aplicación» ▸ Configurac
 - **Sueños:** diario en la fila «Sueños» de la Bitácora 4D.
 - **Más:** Eneatipo, Formulario de inicio, escala, Ajustes (ciclos, fecha del Día 1, app instalable), abrir la hoja.
 
+### Recordatorios (Más ▸ Ajustes ▸ 🔔 Recordatorios)
+- **📅 Aviso en el celular:** crea en tu Google Calendar el evento diario «🌿 Registrar Bitácora 4D» a la hora elegida, con notificación, desde hoy (o desde el Día 1 si es futuro) hasta el Día 86. Requiere notificaciones activadas en la app Google Calendar. Se vuelve a crear solo al cambiar de ciclo o de fecha.
+- **📧 Correo diario:** un activador de Apps Script revisa cada día a la hora elegida (±15 min) si el día de hoy ya tiene registro; si no, te envía un correo con el día, toma/descanso y un botón a la app. «Enviar correo de prueba» lo envía siempre.
+- La hora usa la **zona horaria del script** (Apps Script ▸ ⚙️ Configuración del proyecto ▸ Zona horaria); la tarjeta la muestra.
+- **Permisos:** la primera vez, en el editor ejecuta `autorizarRecordatorios` (calendario, correo y activadores). Si no, la app muestra «Falta dar permisos».
+- Una aplicación web no puede enviar notificaciones push por sí sola con el celular cerrado; por eso se usan Calendar y correo.
+
 ### Ciclos
 **Empezar ciclo nuevo** (Hoy o Ajustes): (1) copia «Bitácora 4D» y «Bitácora» a hojas `… · Ciclo N (fechas)` y verifica que la copia sea idéntica; (2) borra sólo puntajes y comentarios (filas 10–30), hora, estado («Registro pendiente») y Eneatipo filas 34–51; (3) guarda la nueva fecha.
 Se conservan preguntas, fórmulas, formatos, listas desplegables, notas y el plan (toma/descanso, «Calibración», «T»). Si la copia no coincide, no se borra nada.
@@ -176,6 +185,7 @@ Se conservan preguntas, fórmulas, formatos, listas desplegables, notas y el pla
 | **Ver la clave / enlace** | Ejecuta `configurarApp` y mira el Registro de ejecución. |
 | **Respaldo de datos** | En la hoja: **Archivo ▸ Hacer una copia** (o Archivo ▸ Descargar ▸ .xlsx). Google también guarda el **historial de versiones** (Archivo ▸ Historial de versiones). |
 | **Respaldo del código** | Este repositorio + el .zip. |
+| **Después de actualizar a una versión con permisos nuevos** (p. ej. recordatorios) | Ejecuta una vez `autorizarRecordatorios` en el editor y acepta. Si no, la implementación pública (Ejecutar como: Yo) falla para **todas** las funciones hasta que autorices. |
 | **Ver errores** | Apps Script ▸ ☰ **Ejecuciones**: cada uso de la app aparece como `doGet`, `rpc` o `doPost` con su estado. |
 
 ---
@@ -217,6 +227,8 @@ Verifica el mapa con las pruebas: `python3 tests/make_fixture.py tu.xlsx && node
 | «La clave no es válida» / «no te reconoce como dueño» en la app de Apps Script | Con «Ejecutar como: Yo» Google no siempre revela quién abre la app. | Privada con **Ejecutar como: usuario que accede**; o pegar la clave/enlace en «Clave o enlace de conexión». |
 | «Failed to fetch» / «No pude conectar con tu hoja» y en Ejecuciones **no aparece `doPost`** | La implementación pública no acepta visitantes anónimos (p. ej. «Cualquier usuario con una cuenta de Google»). | Pública: **Ejecutar como: Yo** + **Quién tiene acceso: Cualquier usuario** + Versión nueva. Prueba: abrir la URL pública en **incógnito** debe mostrar Microdosis, no el inicio de sesión. |
 | «No se puede instalar esta app» en script.google.com | Las páginas de Apps Script no son instalables. | Instalar la de github.io (o crear acceso directo). |
+| Después de actualizar, la app instalable falla toda («No pude conectar» / error de permisos) | El código nuevo pide permisos nuevos y el dueño aún no los aceptó. | En el editor ejecuta `autorizarRecordatorios` y acepta. |
+| No llega la notificación del calendario | Notificaciones de Google Calendar desactivadas, o el ciclo ya terminó (no hay evento). | Activar notificaciones de la app Calendar; empezar un ciclo nuevo. |
 | La app no muestra cambios nuevos | Caché del service worker. | Cerrar y abrir la app; si persiste, subir `VERSION` en `docs/sw.js`. |
 
 ---
@@ -384,6 +396,9 @@ var API_ = {
   saveForm: function (d) { return saveForm_(d); },
   setStart: function (iso) { return setStart_(iso); },
   startNewCycle: function (iso) { return startNewCycle_(iso); },
+  getReminders: function () { return getReminders_(); },
+  setReminders: function (cfg) { return setReminders_(cfg); },
+  testReminder: function () { return sendReminderEmail_(true); },
   getMobileSetup: function () { return getMobileSetup_(); },
   setApiUrl: function (url) { return setApiUrl_(url); }
 };
@@ -848,10 +863,129 @@ function startNewCycle_(isoDate) {
     props_().setProperty('CYCLES', JSON.stringify(list));
     props_().setProperty('START', isoDate);
     SpreadsheetApp.flush();
+    refreshCalendar_();
     return getBootstrap_();
   } finally {
     lock.releaseLock();
   }
+}
+
+/* ---------- Recordatorios ---------- */
+/*
+ * Dos tipos (se configuran en la app: Más ▸ Ajustes ▸ Recordatorios):
+ *  - Calendario: evento diario «🌿 Registrar Bitácora 4D» con aviso en el celular, hasta el fin del ciclo.
+ *  - Correo: cada día a la hora elegida, sólo si ese día todavía no hay registro.
+ * La primera vez ejecuta autorizarRecordatorios() en el editor para dar los permisos.
+ */
+var REM_HANDLER = 'recordatorioDiario';
+var REM_TITLE = '🌿 Registrar Bitácora 4D';
+
+function remCfg_() {
+  var d = { email: { on: false, time: '20:00' }, cal: { on: false, time: '20:00' }, seriesId: '' };
+  try { var c = JSON.parse(props_().getProperty('REMINDERS') || '{}'); } catch (e) { c = {}; }
+  return { email: c.email || d.email, cal: c.cal || d.cal, seriesId: c.seriesId || '' };
+}
+function saveRemCfg_(c) { props_().setProperty('REMINDERS', JSON.stringify(c)); }
+function parseTime_(t) {
+  var m = String(t || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!m || +m[1] > 23 || +m[2] > 59) throw new Error('Hora inválida: ' + t);
+  return { h: +m[1], m: +m[2] };
+}
+function maskEmail_(e) { return String(e || '').replace(/^(.{2}).*(@.*)$/, '$1•••$2'); }
+
+function getReminders_() {
+  var c = remCfg_(), msg = '';
+  var end = addDays_(startDate_(), CFG.lastDay - 1);
+  if (c.cal.on && !c.seriesId) msg = 'El ciclo actual ya terminó: el aviso del calendario se creará cuando empieces un ciclo nuevo.';
+  return { email: c.email, cal: c.cal, calActive: !!c.seriesId, tz: Session.getScriptTimeZone(),
+           to: maskEmail_(Session.getEffectiveUser().getEmail()), cycleEnd: iso_(end), note: msg };
+}
+
+function setReminders_(cfg) {
+  var lock = LockService.getDocumentLock();
+  lock.waitLock(20000);
+  try {
+    var c = remCfg_();
+    c.email = { on: !!(cfg && cfg.email && cfg.email.on), time: (cfg && cfg.email && cfg.email.time) || c.email.time };
+    c.cal = { on: !!(cfg && cfg.cal && cfg.cal.on), time: (cfg && cfg.cal && cfg.cal.time) || c.cal.time };
+    parseTime_(c.email.time); parseTime_(c.cal.time);
+    saveRemCfg_(c);
+    // correo: un activador diario
+    ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === REM_HANDLER) ScriptApp.deleteTrigger(t); });
+    if (c.email.on) {
+      var t = parseTime_(c.email.time);
+      ScriptApp.newTrigger(REM_HANDLER).timeBased().everyDays(1).atHour(t.h).nearMinute(t.m).create();
+    }
+    refreshCalendar_();
+    return getReminders_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** (Re)crea el evento diario del calendario para el ciclo actual. */
+function refreshCalendar_() {
+  var c = remCfg_();
+  if (!c.cal.on && !c.seriesId) return;
+  var cal = CalendarApp.getDefaultCalendar();
+  if (c.seriesId) {
+    try { var old = cal.getEventSeriesById(c.seriesId); if (old) old.deleteEventSeries(); } catch (e) {}
+    c.seriesId = '';
+  }
+  if (c.cal.on) {
+    var t = parseTime_(c.cal.time), start = startDate_(), end = addDays_(start, CFG.lastDay - 1);
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var day = start > today ? start : today;
+    var first = new Date(day.getFullYear(), day.getMonth(), day.getDate(), t.h, t.m);
+    if (first < new Date()) first = addDays_(first, 1);
+    var lastDay = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59);
+    if (first <= lastDay) {
+      var series = cal.createEventSeries(REM_TITLE, first, new Date(first.getTime() + 10 * 60000),
+        CalendarApp.newRecurrence().addDailyRule().until(addDays_(lastDay, 1)),
+        { description: 'Abre tu app Microdosis y registra el día.\n' + CFG.pwaUrl });
+      try { series.removeAllReminders(); series.addPopupReminder(0); } catch (e) {}
+      c.seriesId = series.getId();
+    }
+  }
+  saveRemCfg_(c);
+}
+
+/** Lo ejecuta el activador diario (no lo llames a mano: usa «Enviar correo de prueba» en la app). */
+function recordatorioDiario(e) {
+  if (!e || !e.triggerUid) return;   // sólo desde el activador
+  sendReminderEmail_(false);
+}
+
+/** Envía el correo del día. force=true lo envía aunque ya exista registro (prueba). */
+function sendReminderEmail_(force) {
+  var today = iso_(new Date());
+  var ent = entries_().filter(function (x) { return !x.special && x.date === today; })[0];
+  if (!ent && !force) return { sent: false, reason: 'Hoy no es un día del ciclo' };
+  var info = '', registered = false;
+  if (ent) {
+    var d = getEntry_(ent.id);
+    registered = /finaliz/i.test(d.estado) || Object.keys(d.rows).some(function (k) { return d.rows[k].score !== null || d.rows[k].text; });
+    if (registered && !force) return { sent: false, reason: 'Ya registraste hoy' };
+    info = '<p style="font-size:20px;margin:0 0 6px"><b>' + ent.label + '</b></p>' +
+      (d.toma ? '<p style="margin:0 0 6px">Hoy toca: <b>' + d.toma + '</b></p>' : '') +
+      '<p style="margin:0 0 14px;color:#6B6584">' + (registered ? 'Ya tienes registro hoy (correo de prueba).' : 'Todavía no registras el día de hoy.') + '</p>';
+  } else {
+    info = '<p style="margin:0 0 14px;color:#6B6584">Correo de prueba: hoy no es un día del ciclo actual.</p>';
+  }
+  var html = '<div style="font-family:Arial,sans-serif;max-width:480px;color:#231C38">' +
+    '<div style="background:#4A3B8F;color:#fff;padding:14px 18px;border-radius:12px 12px 0 0;font-size:18px"><b>🌿 Microdosis</b></div>' +
+    '<div style="border:1px solid #E4DFF2;border-top:none;padding:18px;border-radius:0 0 12px 12px">' + info +
+    '<a href="' + CFG.pwaUrl + '" style="display:inline-block;background:#4A3B8F;color:#fff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:bold">✍️ Registrar ahora</a>' +
+    '<p style="font-size:12px;color:#9A95AE;margin:16px 0 0">Cambia o desactiva este recordatorio en la app: Más ▸ Ajustes ▸ Recordatorios.</p></div></div>';
+  MailApp.sendEmail({ to: Session.getEffectiveUser().getEmail(), subject: '🌿 ' + (ent ? 'Registra tu ' + ent.label : 'Recordatorio de Microdosis'), htmlBody: html });
+  return { sent: true };
+}
+
+/** Ejecútala una vez desde el editor (▶ Ejecutar) para dar los permisos de calendario, correo y activadores. */
+function autorizarRecordatorios() {
+  ScriptApp.getProjectTriggers();
+  CalendarApp.getDefaultCalendar().getName();
+  Logger.log('Permisos listos. Correos disponibles hoy: ' + MailApp.getRemainingDailyQuota() + '. Zona horaria del script: ' + Session.getScriptTimeZone());
 }
 
 /* ---------- Ajustes ---------- */
@@ -859,6 +993,7 @@ function startNewCycle_(isoDate) {
 function setStart_(isoDate) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) throw new Error('Fecha inválida');
   props_().setProperty('START', isoDate);
+  refreshCalendar_();
   return getBootstrap_();
 }
 ```
@@ -924,7 +1059,7 @@ main{max-width:640px;margin:0 auto;padding:14px 14px 24px}
 .daybar{position:sticky;top:calc(56px + env(safe-area-inset-top));z-index:15;background:var(--bg);padding:8px 0 10px;margin:-14px 0 6px}
 .daybar .inner{display:flex;gap:8px;align-items:center}
 .iconbtn{width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:var(--card);font-size:20px;cursor:pointer;flex:none}
-select,input[type=text],input[type=date],textarea{width:100%;font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 12px}
+select,input[type=text],input[type=date],input[type=time],textarea{width:100%;font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 12px}
 select{appearance:none;-webkit-appearance:none;font-weight:700;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:34px}
 textarea{min-height:64px;resize:none;line-height:1.4}
 textarea:focus,input:focus,select:focus{outline:2px solid var(--brand2);outline-offset:0;border-color:transparent}
@@ -1512,15 +1647,40 @@ function viewAjustes(){
     '<details style="margin-top:12px"><summary class="small" style="cursor:pointer;color:var(--muted)">Corregir la fecha del Día 1 sin archivar</summary>'+
     '<p class="small muted" style="margin:8px 0">Sólo si te equivocaste de fecha en este mismo ciclo. No archiva ni borra nada.</p>'+
     '<input type="date" id="startIn" value="'+esc(b.start)+'"><button class="btn ghost block" style="margin-top:8px" id="startSave">Guardar fecha</button></details></div>'+
+    '<div class="card" id="remCard"><h2>🔔 Recordatorios</h2><div class="loading" style="padding:10px 0"><div class="spin"></div></div></div>'+
     (MODE==='gas'?'<div class="card" id="pwaCard"><h2>📲 App instalable</h2><div class="loading" style="padding:10px 0"><div class="spin"></div></div></div>':
      '<div class="card"><h2>📲 Instalar</h2>'+(INSTALL_EVT?'<button class="btn block" id="instBtn">Instalar la app</button>':'<p class="small" style="margin:0"><b>Android (Chrome):</b> menú ⋮ ▸ «Instalar app» o «Agregar a la pantalla principal».<br><b>iPhone (Safari):</b> Compartir ▸ «Agregar a inicio».</p>')+
      '<button class="btn ghost block" style="margin-top:10px" id="discBtn">Desconectar este celular</button></div>');
   $('#startSave').onclick=function(){var v=$('#startIn').value;if(!v)return;this.disabled=true;
     api('setStart',v).then(function(nb){S.boot=nb;S.entryId=suggestedId();S.progress=null;toast('✅ Fecha actualizada');go('hoy')}).catch(function(e){toast('⚠️ '+e.message)})};
   if(MODE==='gas')loadPwaCard();
+  loadRemCard();
   var ib=$('#instBtn');if(ib)ib.onclick=function(){INSTALL_EVT.prompt();INSTALL_EVT=null};
   var db=$('#discBtn');if(db)db.onclick=function(){if(confirm('¿Desconectar? Tendrás que volver a conectar este celular.')){setCfg(null);location.reload()}};
 }
+function remRow(id,icon,title,desc,cfg){
+  return '<div style="padding:10px 0;border-bottom:1px solid var(--line)"><label class="check" style="border:none;padding:0;align-items:flex-start">'+
+    '<input type="checkbox" id="'+id+'On"'+(cfg.on?' checked':'')+'><span><b>'+icon+' '+title+'</b><br><span class="small muted">'+desc+'</span></span></label>'+
+    '<div class="row" style="margin:8px 0 0 32px"><span class="small muted">Hora</span><input type="time" id="'+id+'Time" value="'+esc(cfg.time)+'" style="max-width:140px"></div></div>';
+}
+function loadRemCard(){
+  api('getReminders').then(function(r){
+    var box=$('#remCard');if(!box)return;
+    box.innerHTML='<h2>🔔 Recordatorios</h2>'+
+      remRow('rc','📅','Aviso en el celular','Evento diario en tu Google Calendar con notificación, hasta el fin del ciclo ('+esc(fdate(r.cycleEnd))+'). Activa las notificaciones de la app Google Calendar.',r.cal)+
+      remRow('re','📧','Correo diario','Llega a '+esc(r.to)+' sólo si ese día aún no registraste.',r.email)+
+      (r.note?'<p class="small" style="margin:10px 0 0;color:var(--warn)">'+esc(r.note)+'</p>':'')+
+      '<p class="small muted" style="margin:10px 0">Zona horaria: '+esc(r.tz)+'</p>'+
+      '<button class="btn block" id="remSave">Guardar recordatorios</button>'+
+      '<button class="btn ghost block" style="margin-top:8px" id="remTest">📧 Enviar correo de prueba</button>';
+    $('#remSave').onclick=function(){var b=this;b.disabled=true;b.textContent='Guardando…';
+      api('setReminders',{cal:{on:$('#rcOn').checked,time:$('#rcTime').value||'20:00'},email:{on:$('#reOn').checked,time:$('#reTime').value||'20:00'}})
+        .then(function(){toast('✅ Recordatorios guardados');loadRemCard()})
+        .catch(function(e){b.disabled=false;b.textContent='Guardar recordatorios';toast('⚠️ '+remErr(e))})};
+    $('#remTest').onclick=function(){var b=this;b.disabled=true;api('testReminder').then(function(){toast('📧 Correo enviado. Revisa tu bandeja.');b.disabled=false}).catch(function(e){b.disabled=false;toast('⚠️ '+remErr(e))})};
+  }).catch(function(e){var box=$('#remCard');if(box)box.innerHTML='<h2>🔔 Recordatorios</h2><p class="small" style="margin:0">'+esc(remErr(e))+'</p>'});
+}
+function remErr(e){var m=String(e&&e.message||e);return /permis|authoriz|autoriz|scope/i.test(m)?'Falta dar permisos: en Apps Script ejecuta una vez la función «autorizarRecordatorios».':m}
 function todayIso(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)}
 function newCycleSheet(){
   var cy=S.boot.cycles.current;
@@ -1594,7 +1754,7 @@ start();
 
 ```javascript
 // Service worker: guarda la interfaz para que abra rápido. Los datos siempre vienen de la hoja (red).
-const VERSION = 'md-v6';
+const VERSION = 'md-v7';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', e => {

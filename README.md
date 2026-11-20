@@ -16,7 +16,8 @@ App para registrar la **Bitácora 4D** desde el celular. Lee y escribe directame
 | 📝 **Formulario** (en Más) | Datos generales, casillas de salud y respuestas abiertas | Hoja «Formulario de inicio» |
 | 🔄 **Ciclo nuevo** (Hoy o Más ▸ Ajustes) | Archiva el ciclo actual en hojas nuevas («Bitácora 4D · Ciclo N (fechas)»), limpia sólo tus registros y fija el nuevo Día 1 | Hojas de archivo en tu mismo archivo |
 | 📈 **Comparar ciclos** (en Progreso) | Gráfica con los ciclos superpuestos y tabla de promedios por ciclo | (solo lectura) |
-| ⚙️ **Ajustes** (en Más) | Ciclos, corregir la fecha del Día 1, app instalable | Propiedades del script |
+| 🔔 **Recordatorios** (Más ▸ Ajustes) | Aviso diario en el celular (Google Calendar) y correo diario sólo si falta registrar. La primera vez ejecuta `autorizarRecordatorios` en el editor | Tu Google Calendar / correo |
+| ⚙️ **Ajustes** (en Más) | Ciclos, recordatorios, corregir la fecha del Día 1, app instalable | Propiedades del script |
 
 ## Instalación (una sola vez, ~5 minutos)
 

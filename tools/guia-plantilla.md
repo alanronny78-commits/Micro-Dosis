@@ -18,6 +18,7 @@ cómo replicarlo para otra persona u otra bitácora, y el código completo de ca
 | 5 | **Correcciones** | Botón «último día registrado», pantalla de conexión clara, reconocimiento del dueño, enlace de conexión, diagnóstico de errores de red. |
 | 6 | **Ciclos** | Botón **«Empezar ciclo nuevo»**: archiva el ciclo en hojas aparte, limpia sólo los registros y fija el nuevo Día 1. **Progreso** compara ciclos. |
 | 7 | **Respaldo** | Esta guía, pruebas automáticas (`tests/`) y un .zip con todo. |
+| 8 | **Recordatorios diarios** | Aviso en el celular vía Google Calendar y correo diario sólo si falta registrar. |
 
 ---
 
@@ -90,6 +91,7 @@ Datos generales en E6, E8, E10, H10, K10, N10, H12; casillas en C/F/I/L de las f
 | `API_KEY` | Clave secreta de la app instalable. |
 | `API_URL` | URL `/exec` de la implementación pública. |
 | `CYCLES` | Lista JSON de ciclos archivados (número, fechas e ID de sus hojas). |
+| `REMINDERS` | Configuración de recordatorios (correo y calendario, horas, ID del evento). |
 
 ---
 
@@ -159,6 +161,13 @@ Acepta los permisos («Google no ha verificado esta aplicación» ▸ Configurac
 - **Sueños:** diario en la fila «Sueños» de la Bitácora 4D.
 - **Más:** Eneatipo, Formulario de inicio, escala, Ajustes (ciclos, fecha del Día 1, app instalable), abrir la hoja.
 
+### Recordatorios (Más ▸ Ajustes ▸ 🔔 Recordatorios)
+- **📅 Aviso en el celular:** crea en tu Google Calendar el evento diario «🌿 Registrar Bitácora 4D» a la hora elegida, con notificación, desde hoy (o desde el Día 1 si es futuro) hasta el Día 86. Requiere notificaciones activadas en la app Google Calendar. Se vuelve a crear solo al cambiar de ciclo o de fecha.
+- **📧 Correo diario:** un activador de Apps Script revisa cada día a la hora elegida (±15 min) si el día de hoy ya tiene registro; si no, te envía un correo con el día, toma/descanso y un botón a la app. «Enviar correo de prueba» lo envía siempre.
+- La hora usa la **zona horaria del script** (Apps Script ▸ ⚙️ Configuración del proyecto ▸ Zona horaria); la tarjeta la muestra.
+- **Permisos:** la primera vez, en el editor ejecuta `autorizarRecordatorios` (calendario, correo y activadores). Si no, la app muestra «Falta dar permisos».
+- Una aplicación web no puede enviar notificaciones push por sí sola con el celular cerrado; por eso se usan Calendar y correo.
+
 ### Ciclos
 **Empezar ciclo nuevo** (Hoy o Ajustes): (1) copia «Bitácora 4D» y «Bitácora» a hojas `… · Ciclo N (fechas)` y verifica que la copia sea idéntica; (2) borra sólo puntajes y comentarios (filas 10–30), hora, estado («Registro pendiente») y Eneatipo filas 34–51; (3) guarda la nueva fecha.
 Se conservan preguntas, fórmulas, formatos, listas desplegables, notas y el plan (toma/descanso, «Calibración», «T»). Si la copia no coincide, no se borra nada.
@@ -176,6 +185,7 @@ Se conservan preguntas, fórmulas, formatos, listas desplegables, notas y el pla
 | **Ver la clave / enlace** | Ejecuta `configurarApp` y mira el Registro de ejecución. |
 | **Respaldo de datos** | En la hoja: **Archivo ▸ Hacer una copia** (o Archivo ▸ Descargar ▸ .xlsx). Google también guarda el **historial de versiones** (Archivo ▸ Historial de versiones). |
 | **Respaldo del código** | Este repositorio + el .zip. |
+| **Después de actualizar a una versión con permisos nuevos** (p. ej. recordatorios) | Ejecuta una vez `autorizarRecordatorios` en el editor y acepta. Si no, la implementación pública (Ejecutar como: Yo) falla para **todas** las funciones hasta que autorices. |
 | **Ver errores** | Apps Script ▸ ☰ **Ejecuciones**: cada uso de la app aparece como `doGet`, `rpc` o `doPost` con su estado. |
 
 ---
@@ -217,6 +227,8 @@ Verifica el mapa con las pruebas: `python3 tests/make_fixture.py tu.xlsx && node
 | «La clave no es válida» / «no te reconoce como dueño» en la app de Apps Script | Con «Ejecutar como: Yo» Google no siempre revela quién abre la app. | Privada con **Ejecutar como: usuario que accede**; o pegar la clave/enlace en «Clave o enlace de conexión». |
 | «Failed to fetch» / «No pude conectar con tu hoja» y en Ejecuciones **no aparece `doPost`** | La implementación pública no acepta visitantes anónimos (p. ej. «Cualquier usuario con una cuenta de Google»). | Pública: **Ejecutar como: Yo** + **Quién tiene acceso: Cualquier usuario** + Versión nueva. Prueba: abrir la URL pública en **incógnito** debe mostrar Microdosis, no el inicio de sesión. |
 | «No se puede instalar esta app» en script.google.com | Las páginas de Apps Script no son instalables. | Instalar la de github.io (o crear acceso directo). |
+| Después de actualizar, la app instalable falla toda («No pude conectar» / error de permisos) | El código nuevo pide permisos nuevos y el dueño aún no los aceptó. | En el editor ejecuta `autorizarRecordatorios` y acepta. |
+| No llega la notificación del calendario | Notificaciones de Google Calendar desactivadas, o el ciclo ya terminó (no hay evento). | Activar notificaciones de la app Calendar; empezar un ciclo nuevo. |
 | La app no muestra cambios nuevos | Caché del service worker. | Cerrar y abrir la app; si persiste, subir `VERSION` en `docs/sw.js`. |
 
 ---

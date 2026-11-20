@@ -149,6 +149,9 @@ var API_ = {
   saveForm: function (d) { return saveForm_(d); },
   setStart: function (iso) { return setStart_(iso); },
   startNewCycle: function (iso) { return startNewCycle_(iso); },
+  getReminders: function () { return getReminders_(); },
+  setReminders: function (cfg) { return setReminders_(cfg); },
+  testReminder: function () { return sendReminderEmail_(true); },
   getMobileSetup: function () { return getMobileSetup_(); },
   setApiUrl: function (url) { return setApiUrl_(url); }
 };
@@ -613,10 +616,129 @@ function startNewCycle_(isoDate) {
     props_().setProperty('CYCLES', JSON.stringify(list));
     props_().setProperty('START', isoDate);
     SpreadsheetApp.flush();
+    refreshCalendar_();
     return getBootstrap_();
   } finally {
     lock.releaseLock();
   }
+}
+
+/* ---------- Recordatorios ---------- */
+/*
+ * Dos tipos (se configuran en la app: Más ▸ Ajustes ▸ Recordatorios):
+ *  - Calendario: evento diario «🌿 Registrar Bitácora 4D» con aviso en el celular, hasta el fin del ciclo.
+ *  - Correo: cada día a la hora elegida, sólo si ese día todavía no hay registro.
+ * La primera vez ejecuta autorizarRecordatorios() en el editor para dar los permisos.
+ */
+var REM_HANDLER = 'recordatorioDiario';
+var REM_TITLE = '🌿 Registrar Bitácora 4D';
+
+function remCfg_() {
+  var d = { email: { on: false, time: '20:00' }, cal: { on: false, time: '20:00' }, seriesId: '' };
+  try { var c = JSON.parse(props_().getProperty('REMINDERS') || '{}'); } catch (e) { c = {}; }
+  return { email: c.email || d.email, cal: c.cal || d.cal, seriesId: c.seriesId || '' };
+}
+function saveRemCfg_(c) { props_().setProperty('REMINDERS', JSON.stringify(c)); }
+function parseTime_(t) {
+  var m = String(t || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!m || +m[1] > 23 || +m[2] > 59) throw new Error('Hora inválida: ' + t);
+  return { h: +m[1], m: +m[2] };
+}
+function maskEmail_(e) { return String(e || '').replace(/^(.{2}).*(@.*)$/, '$1•••$2'); }
+
+function getReminders_() {
+  var c = remCfg_(), msg = '';
+  var end = addDays_(startDate_(), CFG.lastDay - 1);
+  if (c.cal.on && !c.seriesId) msg = 'El ciclo actual ya terminó: el aviso del calendario se creará cuando empieces un ciclo nuevo.';
+  return { email: c.email, cal: c.cal, calActive: !!c.seriesId, tz: Session.getScriptTimeZone(),
+           to: maskEmail_(Session.getEffectiveUser().getEmail()), cycleEnd: iso_(end), note: msg };
+}
+
+function setReminders_(cfg) {
+  var lock = LockService.getDocumentLock();
+  lock.waitLock(20000);
+  try {
+    var c = remCfg_();
+    c.email = { on: !!(cfg && cfg.email && cfg.email.on), time: (cfg && cfg.email && cfg.email.time) || c.email.time };
+    c.cal = { on: !!(cfg && cfg.cal && cfg.cal.on), time: (cfg && cfg.cal && cfg.cal.time) || c.cal.time };
+    parseTime_(c.email.time); parseTime_(c.cal.time);
+    saveRemCfg_(c);
+    // correo: un activador diario
+    ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === REM_HANDLER) ScriptApp.deleteTrigger(t); });
+    if (c.email.on) {
+      var t = parseTime_(c.email.time);
+      ScriptApp.newTrigger(REM_HANDLER).timeBased().everyDays(1).atHour(t.h).nearMinute(t.m).create();
+    }
+    refreshCalendar_();
+    return getReminders_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** (Re)crea el evento diario del calendario para el ciclo actual. */
+function refreshCalendar_() {
+  var c = remCfg_();
+  if (!c.cal.on && !c.seriesId) return;
+  var cal = CalendarApp.getDefaultCalendar();
+  if (c.seriesId) {
+    try { var old = cal.getEventSeriesById(c.seriesId); if (old) old.deleteEventSeries(); } catch (e) {}
+    c.seriesId = '';
+  }
+  if (c.cal.on) {
+    var t = parseTime_(c.cal.time), start = startDate_(), end = addDays_(start, CFG.lastDay - 1);
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var day = start > today ? start : today;
+    var first = new Date(day.getFullYear(), day.getMonth(), day.getDate(), t.h, t.m);
+    if (first < new Date()) first = addDays_(first, 1);
+    var lastDay = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59);
+    if (first <= lastDay) {
+      var series = cal.createEventSeries(REM_TITLE, first, new Date(first.getTime() + 10 * 60000),
+        CalendarApp.newRecurrence().addDailyRule().until(addDays_(lastDay, 1)),
+        { description: 'Abre tu app Microdosis y registra el día.\n' + CFG.pwaUrl });
+      try { series.removeAllReminders(); series.addPopupReminder(0); } catch (e) {}
+      c.seriesId = series.getId();
+    }
+  }
+  saveRemCfg_(c);
+}
+
+/** Lo ejecuta el activador diario (no lo llames a mano: usa «Enviar correo de prueba» en la app). */
+function recordatorioDiario(e) {
+  if (!e || !e.triggerUid) return;   // sólo desde el activador
+  sendReminderEmail_(false);
+}
+
+/** Envía el correo del día. force=true lo envía aunque ya exista registro (prueba). */
+function sendReminderEmail_(force) {
+  var today = iso_(new Date());
+  var ent = entries_().filter(function (x) { return !x.special && x.date === today; })[0];
+  if (!ent && !force) return { sent: false, reason: 'Hoy no es un día del ciclo' };
+  var info = '', registered = false;
+  if (ent) {
+    var d = getEntry_(ent.id);
+    registered = /finaliz/i.test(d.estado) || Object.keys(d.rows).some(function (k) { return d.rows[k].score !== null || d.rows[k].text; });
+    if (registered && !force) return { sent: false, reason: 'Ya registraste hoy' };
+    info = '<p style="font-size:20px;margin:0 0 6px"><b>' + ent.label + '</b></p>' +
+      (d.toma ? '<p style="margin:0 0 6px">Hoy toca: <b>' + d.toma + '</b></p>' : '') +
+      '<p style="margin:0 0 14px;color:#6B6584">' + (registered ? 'Ya tienes registro hoy (correo de prueba).' : 'Todavía no registras el día de hoy.') + '</p>';
+  } else {
+    info = '<p style="margin:0 0 14px;color:#6B6584">Correo de prueba: hoy no es un día del ciclo actual.</p>';
+  }
+  var html = '<div style="font-family:Arial,sans-serif;max-width:480px;color:#231C38">' +
+    '<div style="background:#4A3B8F;color:#fff;padding:14px 18px;border-radius:12px 12px 0 0;font-size:18px"><b>🌿 Microdosis</b></div>' +
+    '<div style="border:1px solid #E4DFF2;border-top:none;padding:18px;border-radius:0 0 12px 12px">' + info +
+    '<a href="' + CFG.pwaUrl + '" style="display:inline-block;background:#4A3B8F;color:#fff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:bold">✍️ Registrar ahora</a>' +
+    '<p style="font-size:12px;color:#9A95AE;margin:16px 0 0">Cambia o desactiva este recordatorio en la app: Más ▸ Ajustes ▸ Recordatorios.</p></div></div>';
+  MailApp.sendEmail({ to: Session.getEffectiveUser().getEmail(), subject: '🌿 ' + (ent ? 'Registra tu ' + ent.label : 'Recordatorio de Microdosis'), htmlBody: html });
+  return { sent: true };
+}
+
+/** Ejecútala una vez desde el editor (▶ Ejecutar) para dar los permisos de calendario, correo y activadores. */
+function autorizarRecordatorios() {
+  ScriptApp.getProjectTriggers();
+  CalendarApp.getDefaultCalendar().getName();
+  Logger.log('Permisos listos. Correos disponibles hoy: ' + MailApp.getRemainingDailyQuota() + '. Zona horaria del script: ' + Session.getScriptTimeZone());
 }
 
 /* ---------- Ajustes ---------- */
@@ -624,5 +746,6 @@ function startNewCycle_(isoDate) {
 function setStart_(isoDate) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) throw new Error('Fecha inválida');
   props_().setProperty('START', isoDate);
+  refreshCalendar_();
   return getBootstrap_();
 }

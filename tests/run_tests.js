@@ -4,7 +4,7 @@ const FX = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture.json'), 'utf
 const svc = makeServices(FX);
 let ACTIVE = '';
 const ctx = Object.assign({ console, Date,
-  Session: { getActiveUser: () => ({ getEmail: () => ACTIVE }), getEffectiveUser: () => ({ getEmail: () => 'owner@x.com' }) },
+  Session: { getActiveUser: () => ({ getEmail: () => ACTIVE }), getEffectiveUser: () => ({ getEmail: () => 'owner@x.com' }), getScriptTimeZone: () => 'America/Lima' },
   Utilities: { getUuid: () => require('crypto').randomUUID() },
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (t) => ({ t, setMimeType() { return this; } }) },
   Logger: { log() {} } }, svc);
@@ -172,6 +172,49 @@ t('Ciclo nuevo: archiva, verifica, limpia sólo registros y conserva el plan', (
   const p2 = JSON.parse(JSON.stringify(ctx.getProgress_()));
   assert.deepStrictEqual(p2.cycles.map(c => c.key), ['actual', 'c2', 'c1']);
   assert.strictEqual(p2.cycles[1].series[17][1], 3);
+  ACTIVE = '';
+});
+t('Recordatorios: activador de correo, evento de calendario y correo sólo si falta registrar', () => {
+  ACTIVE = 'owner@x.com';
+  const pad = n => String(n).padStart(2, '0');
+  const now = new Date(), iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  // ciclo terminado: correo sí, calendario no (nota)
+  ctx.setStart_('2026-04-13');
+  let r = JSON.parse(JSON.stringify(ctx.rpc('', 'setReminders', [{ email: { on: true, time: '21:30' }, cal: { on: true, time: '08:15' } }])));
+  assert.strictEqual(svc.triggers.length, 1); assert.strictEqual(svc.triggers[0].hour, 21); assert.strictEqual(svc.triggers[0].minute, 30);
+  assert.strictEqual(svc.triggers[0].fn, 'recordatorioDiario');
+  assert.ok(!r.calActive && r.note, 'sin evento y con aviso si el ciclo terminó');
+  assert.strictEqual(r.to, 'ow•••@x.com'); assert.strictEqual(r.tz, 'America/Lima');
+  // ciclo activo (Día 1 = hace 2 días): se crea la serie hasta el fin del ciclo
+  const start = new Date(now); start.setDate(start.getDate() - 2);
+  const b = JSON.parse(JSON.stringify(ctx.setStart_(iso(start))));
+  r = JSON.parse(JSON.stringify(ctx.getReminders_()));
+  assert.ok(r.calActive, 'evento creado al cambiar la fecha');
+  const ev = svc.events[svc.events.length - 1];
+  assert.strictEqual(ev.title, '🌿 Registrar Bitácora 4D'); assert.strictEqual(ev.start.getHours(), 8); assert.strictEqual(ev.start.getMinutes(), 15);
+  assert.deepStrictEqual(ev.reminders, [0]); assert.ok(ev.rec.untilDate > ev.start);
+  assert.ok(/github\.io/.test(ev.opt.description));
+  // volver a guardar no duplica: borra la serie anterior
+  ctx.rpc('', 'setReminders', [{ email: { on: true, time: '21:30' }, cal: { on: true, time: '07:00' } }]);
+  assert.strictEqual(svc.events.filter(e => !e.deleted).length, 1); assert.strictEqual(svc.triggers.length, 1);
+  // correo: sin activador no hace nada; hoy sin registro → envía; con registro → no
+  const n0 = svc.mails.length;
+  ctx.recordatorioDiario(); ctx.recordatorioDiario({});
+  assert.strictEqual(svc.mails.length, n0, 'sin triggerUid no envía');
+  const todayId = b.entries.find(e => !e.special && e.date === iso(now)).id;
+  const live = svc.sheets()['Bitácora 4D '].d.values, c = ctx.col4D_(todayId);
+  for (let rr = 10; rr <= 30; rr++) { live[rr - 1][c - 1] = null; live[rr - 1][c] = null; } live[8][c - 1] = 'Registro pendiente';
+  ctx.recordatorioDiario({ triggerUid: 't1' });
+  assert.strictEqual(svc.mails.length, n0 + 1); assert.ok(svc.mails[n0].subject.includes('Día 3')); assert.strictEqual(svc.mails[n0].to, 'owner@x.com');
+  ctx.saveEntry_(todayId, Object.assign(ctx.getEntry_(todayId), { rows: { 17: { score: 1, text: 'ok' } } }));
+  ctx.recordatorioDiario({ triggerUid: 't1' });
+  assert.strictEqual(svc.mails.length, n0 + 1, 'ya registrado: no envía');
+  ctx.rpc('', 'testReminder', []);
+  assert.strictEqual(svc.mails.length, n0 + 2, 'la prueba siempre envía');
+  // desactivar todo
+  r = JSON.parse(JSON.stringify(ctx.rpc('', 'setReminders', [{ email: { on: false }, cal: { on: false } }])));
+  assert.strictEqual(svc.triggers.length, 0); assert.strictEqual(svc.events.filter(e => !e.deleted).length, 0); assert.ok(!r.calActive);
+  assert.throws(() => ctx.rpc('', 'setReminders', [{ email: { on: true, time: '25:00' }, cal: { on: false } }]), /Hora inválida/);
   ACTIVE = '';
 });
 console.log(`\n${ok} pruebas OK`);

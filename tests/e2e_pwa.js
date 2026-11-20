@@ -6,7 +6,7 @@ const FX = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture.json'), 'utf
 const svc = makeServices(FX);
 let ACTIVE = 'owner@x.com';
 const ctx = Object.assign({ console, Date,
-  Session: { getActiveUser: () => ({ getEmail: () => ACTIVE }), getEffectiveUser: () => ({ getEmail: () => 'owner@x.com' }) },
+  Session: { getActiveUser: () => ({ getEmail: () => ACTIVE }), getEffectiveUser: () => ({ getEmail: () => 'owner@x.com' }), getScriptTimeZone: () => 'America/Lima' },
   Utilities: { getUuid: () => require('crypto').randomUUID() },
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (t) => ({ t, setMimeType() { return this; } }) },
   Logger: { log() {} } }, svc);

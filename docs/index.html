@@ -63,7 +63,7 @@ main{max-width:640px;margin:0 auto;padding:14px 14px 24px}
 .daybar{position:sticky;top:calc(56px + env(safe-area-inset-top));z-index:15;background:var(--bg);padding:8px 0 10px;margin:-14px 0 6px}
 .daybar .inner{display:flex;gap:8px;align-items:center}
 .iconbtn{width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:var(--card);font-size:20px;cursor:pointer;flex:none}
-select,input[type=text],input[type=date],textarea{width:100%;font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 12px}
+select,input[type=text],input[type=date],input[type=time],textarea{width:100%;font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 12px}
 select{appearance:none;-webkit-appearance:none;font-weight:700;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:34px}
 textarea{min-height:64px;resize:none;line-height:1.4}
 textarea:focus,input:focus,select:focus{outline:2px solid var(--brand2);outline-offset:0;border-color:transparent}
@@ -651,15 +651,40 @@ function viewAjustes(){
     '<details style="margin-top:12px"><summary class="small" style="cursor:pointer;color:var(--muted)">Corregir la fecha del Día 1 sin archivar</summary>'+
     '<p class="small muted" style="margin:8px 0">Sólo si te equivocaste de fecha en este mismo ciclo. No archiva ni borra nada.</p>'+
     '<input type="date" id="startIn" value="'+esc(b.start)+'"><button class="btn ghost block" style="margin-top:8px" id="startSave">Guardar fecha</button></details></div>'+
+    '<div class="card" id="remCard"><h2>🔔 Recordatorios</h2><div class="loading" style="padding:10px 0"><div class="spin"></div></div></div>'+
     (MODE==='gas'?'<div class="card" id="pwaCard"><h2>📲 App instalable</h2><div class="loading" style="padding:10px 0"><div class="spin"></div></div></div>':
      '<div class="card"><h2>📲 Instalar</h2>'+(INSTALL_EVT?'<button class="btn block" id="instBtn">Instalar la app</button>':'<p class="small" style="margin:0"><b>Android (Chrome):</b> menú ⋮ ▸ «Instalar app» o «Agregar a la pantalla principal».<br><b>iPhone (Safari):</b> Compartir ▸ «Agregar a inicio».</p>')+
      '<button class="btn ghost block" style="margin-top:10px" id="discBtn">Desconectar este celular</button></div>');
   $('#startSave').onclick=function(){var v=$('#startIn').value;if(!v)return;this.disabled=true;
     api('setStart',v).then(function(nb){S.boot=nb;S.entryId=suggestedId();S.progress=null;toast('✅ Fecha actualizada');go('hoy')}).catch(function(e){toast('⚠️ '+e.message)})};
   if(MODE==='gas')loadPwaCard();
+  loadRemCard();
   var ib=$('#instBtn');if(ib)ib.onclick=function(){INSTALL_EVT.prompt();INSTALL_EVT=null};
   var db=$('#discBtn');if(db)db.onclick=function(){if(confirm('¿Desconectar? Tendrás que volver a conectar este celular.')){setCfg(null);location.reload()}};
 }
+function remRow(id,icon,title,desc,cfg){
+  return '<div style="padding:10px 0;border-bottom:1px solid var(--line)"><label class="check" style="border:none;padding:0;align-items:flex-start">'+
+    '<input type="checkbox" id="'+id+'On"'+(cfg.on?' checked':'')+'><span><b>'+icon+' '+title+'</b><br><span class="small muted">'+desc+'</span></span></label>'+
+    '<div class="row" style="margin:8px 0 0 32px"><span class="small muted">Hora</span><input type="time" id="'+id+'Time" value="'+esc(cfg.time)+'" style="max-width:140px"></div></div>';
+}
+function loadRemCard(){
+  api('getReminders').then(function(r){
+    var box=$('#remCard');if(!box)return;
+    box.innerHTML='<h2>🔔 Recordatorios</h2>'+
+      remRow('rc','📅','Aviso en el celular','Evento diario en tu Google Calendar con notificación, hasta el fin del ciclo ('+esc(fdate(r.cycleEnd))+'). Activa las notificaciones de la app Google Calendar.',r.cal)+
+      remRow('re','📧','Correo diario','Llega a '+esc(r.to)+' sólo si ese día aún no registraste.',r.email)+
+      (r.note?'<p class="small" style="margin:10px 0 0;color:var(--warn)">'+esc(r.note)+'</p>':'')+
+      '<p class="small muted" style="margin:10px 0">Zona horaria: '+esc(r.tz)+'</p>'+
+      '<button class="btn block" id="remSave">Guardar recordatorios</button>'+
+      '<button class="btn ghost block" style="margin-top:8px" id="remTest">📧 Enviar correo de prueba</button>';
+    $('#remSave').onclick=function(){var b=this;b.disabled=true;b.textContent='Guardando…';
+      api('setReminders',{cal:{on:$('#rcOn').checked,time:$('#rcTime').value||'20:00'},email:{on:$('#reOn').checked,time:$('#reTime').value||'20:00'}})
+        .then(function(){toast('✅ Recordatorios guardados');loadRemCard()})
+        .catch(function(e){b.disabled=false;b.textContent='Guardar recordatorios';toast('⚠️ '+remErr(e))})};
+    $('#remTest').onclick=function(){var b=this;b.disabled=true;api('testReminder').then(function(){toast('📧 Correo enviado. Revisa tu bandeja.');b.disabled=false}).catch(function(e){b.disabled=false;toast('⚠️ '+remErr(e))})};
+  }).catch(function(e){var box=$('#remCard');if(box)box.innerHTML='<h2>🔔 Recordatorios</h2><p class="small" style="margin:0">'+esc(remErr(e))+'</p>'});
+}
+function remErr(e){var m=String(e&&e.message||e);return /permis|authoriz|autoriz|scope/i.test(m)?'Falta dar permisos: en Apps Script ejecuta una vez la función «autorizarRecordatorios».':m}
 function todayIso(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)}
 function newCycleSheet(){
   var cy=S.boot.cycles.current;

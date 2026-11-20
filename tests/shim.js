@@ -47,7 +47,7 @@ function makeServices(FX, opts) {
   };
   var sheets = {}, order = [];
   Object.keys(FX).forEach(function(k){ sheets[k] = new Sheet(k, FX[k]); });
-  var props = {};
+  var props = {}, triggers = [], events = [], mails = [];
   return {
     writes: writes, sheets: function(){ return sheets; },
     SpreadsheetApp: {
@@ -58,7 +58,26 @@ function makeServices(FX, opts) {
     },
     PropertiesService: { getDocumentProperties: function(){ return { getProperty: function(k){ return props[k] || null; }, setProperty: function(k,v){ props[k]=v; } }; } },
     LockService: { getDocumentLock: function(){ return { waitLock: function(){}, releaseLock: function(){} }; } },
-    HtmlService: {}
+    HtmlService: {},
+    // --- recordatorios ---
+    triggers: triggers, events: events, mails: mails,
+    ScriptApp: {
+      getProjectTriggers: function(){ return triggers.slice(); },
+      deleteTrigger: function(t){ var i = triggers.indexOf(t); if (i >= 0) triggers.splice(i, 1); },
+      newTrigger: function(fn){ var t = { fn: fn, getHandlerFunction: function(){ return fn; } };
+        var b = { timeBased: function(){ return b; }, everyDays: function(n){ t.days = n; return b; }, atHour: function(h){ t.hour = h; return b; },
+                  nearMinute: function(m){ t.minute = m; return b; }, create: function(){ triggers.push(t); return t; } }; return b; }
+    },
+    CalendarApp: {
+      newRecurrence: function(){ var r = { rules: [] }; r.addDailyRule = function(){ r.rules.push('daily'); return r; }; r.until = function(d){ r.untilDate = d; return r; }; return r; },
+      getDefaultCalendar: function(){ return {
+        getName: function(){ return 'Demo'; },
+        createEventSeries: function(title, start, end, rec, opt){ var ev = { id: 'ser' + (events.length + 1), title: title, start: start, end: end, rec: rec, opt: opt, reminders: [1], deleted: false };
+          ev.getId = function(){ return ev.id; }; ev.removeAllReminders = function(){ ev.reminders = []; }; ev.addPopupReminder = function(m){ ev.reminders.push(m); };
+          ev.deleteEventSeries = function(){ ev.deleted = true; }; events.push(ev); return ev; },
+        getEventSeriesById: function(id){ return events.filter(function(e){ return e.id === id; })[0] || null; } }; }
+    },
+    MailApp: { sendEmail: function(o){ mails.push(o); }, getRemainingDailyQuota: function(){ return 100; } }
   };
 }
 if (typeof module !== 'undefined') module.exports = makeServices;
