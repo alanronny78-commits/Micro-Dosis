@@ -218,7 +218,21 @@ function viewSetup(bad){
   };
 }
 function showErr(e){
-  $('#view').innerHTML='<div class="card err">⚠️ '+esc(e.message||e)+'</div><button class="btn block" onclick="location.reload()">Reintentar</button>';
+  var msg=String(e&&e.message||e), c=getCfg()||{};
+  if(MODE==='web'&&/fetch|network|load failed/i.test(msg)){
+    var id=(String(c.url||'').match(/\/s\/([^\/]+)\//)||[])[1]||'?';
+    $('#view').innerHTML='<div class="card"><h2>📡 No pude conectar con tu hoja</h2>'+
+      '<p class="small" style="margin:0 0 8px">Google no dejó pasar la conexión. Revisa:</p>'+
+      '<ol class="small" style="margin:0 0 10px;padding-left:20px;line-height:1.6"><li>Que tengas internet.</li>'+
+      '<li>Que la implementación pública diga <b>Quién tiene acceso: «Cualquier usuario»</b> (no «con una cuenta de Google») y <b>Ejecutar como: Yo</b>.</li>'+
+      '<li>Que esta app use esa implementación. Está conectada a: <b style="word-break:break-all">'+esc(id.slice(0,12))+'…</b></li></ol>'+
+      '<button class="btn block" onclick="location.reload()">Reintentar</button>'+
+      '<button class="btn ghost block" style="margin-top:8px" onclick="setCfg(null);location.reload()">Cambiar la conexión</button></div>';
+    $('#subtitle').textContent='Sin conexión';
+    $('#tabs').style.display='none';
+    return;
+  }
+  $('#view').innerHTML='<div class="card err">⚠️ '+esc(msg)+'</div><button class="btn block" onclick="location.reload()">Reintentar</button>';
   $('#subtitle').textContent='Error';
 }
 function todayEntry(){var t=S.boot.today;return S.boot.entries.filter(function(e){return !e.special&&e.date===t})[0]||null}
