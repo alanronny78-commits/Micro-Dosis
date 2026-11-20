@@ -1,0 +1,43 @@
+const { chromium, devices } = require('playwright');
+(async () => {
+  const b = await chromium.launch();
+  const out = process.argv[2] || require('path').join(__dirname, 'shots'); require('fs').mkdirSync(out, { recursive: true });
+  const url = 'file://' + __dirname + '/preview.html';
+  async function page(dark) {
+    const ctx = await b.newContext({ ...devices['iPhone 13'], colorScheme: dark ? 'dark' : 'light' });
+    const p = await ctx.newPage(); const errs = [];
+    p.on('pageerror', e => errs.push(e.message));
+    p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+    p.on('dialog', d => d.accept());
+    p.errs = errs; return p;
+  }
+  const p = await page(false);
+  await p.goto(url + '#today=2026-04-20'); await p.waitForSelector('.hero');
+  await p.screenshot({ path: out + '/1_hoy.png', fullPage: true });
+  await p.click('.hero .btn'); await p.waitForSelector('.item');
+  await p.screenshot({ path: out + '/2_registro_top.png' });
+  const card = (await p.$$('.item'))[6];
+  await card.scrollIntoViewIfNeeded();
+  await (await card.$('.scale button[data-v="2"]')).click();
+  await (await card.$('textarea')).fill('Dormí mejor, 7 horas seguidas.');
+  await p.screenshot({ path: out + '/3_registro_edit.png' });
+  await p.click('#saveBtn'); await p.waitForSelector('.toast.show');
+  await p.screenshot({ path: out + '/4_guardado.png' });
+  await (await p.$('[data-note]')).click(); await p.waitForSelector('.sheet-bg.show');
+  await p.screenshot({ path: out + '/5_nota.png' });
+  await p.click('.sheet .btn');
+  await p.click('nav [data-tab=prog]'); await p.waitForSelector('svg.chart');
+  await p.screenshot({ path: out + '/6_progreso.png', fullPage: true });
+  await p.click('nav [data-tab=suenos]'); await p.waitForSelector('.journal');
+  await p.screenshot({ path: out + '/7_suenos.png' });
+  await p.click('nav [data-tab=mas]'); await p.click('text=Eneatipo'); await p.waitForSelector('.item');
+  await p.screenshot({ path: out + '/8_eneatipo.png' });
+  await p.click('nav [data-tab=mas]'); await p.click('text=Formulario de inicio'); await p.waitForSelector('textarea');
+  await p.screenshot({ path: out + '/9_formulario.png' });
+  const p2 = await page(true);
+  await p2.goto(url); await p2.waitForSelector('.hero');
+  await p2.screenshot({ path: out + '/10_hoy_oscuro_fin_ciclo.png' });
+  console.log('writes:', JSON.stringify(await p.evaluate(() => __svc.writes)));
+  console.log('errors:', JSON.stringify(p.errs.concat(p2.errs)));
+  await b.close();
+})();

@@ -1,5 +1,7 @@
 # 🌿 Micro-Dosis — App web para celular
 
+📘 **Guía completa (resumen, instalación, mantenimiento, réplica y todo el código): [GUIA-COMPLETA.md](GUIA-COMPLETA.md)** · Pruebas: [tests/](tests/README.md)
+
 App para registrar la **Bitácora 4D** desde el celular. Lee y escribe directamente en la hoja de Google de tu bitácora: no hay otra base de datos.
 
 ## Qué incluye
